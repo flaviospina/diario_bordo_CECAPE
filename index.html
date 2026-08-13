@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diário de Bordo — CECAPE</title>
+<meta name="description" content="Registro de atividades com previsão automática de início e término de cada fase.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231f3a5f'/><path d='M28 30h44M28 50h44M28 70h28' stroke='white' stroke-width='9' stroke-linecap='round'/></svg>">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<!-- =============================================================== TOPO -->
+<header class="topo">
+  <div class="topo-interno">
+    <div class="marca">
+      <div class="marca-icone" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/>
+          <path d="M9 8h7M9 12h7"/>
+        </svg>
+      </div>
+      <div class="marca-txt">
+        <strong id="marcaOrg">CECAPE</strong>
+        <span id="marcaSub">Diário de Bordo — Registro de Atividades</span>
+      </div>
+    </div>
+
+    <div class="topo-acoes">
+      <span class="selo-perfil" id="seloPerfil" title="Perfil de acesso atual">
+        <span class="ponto"></span><span id="seloPerfilTxt">Visualização</span>
+      </span>
+      <button class="btn btn-fantasma" id="btnTema" title="Alternar tema claro/escuro" aria-label="Alternar tema">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="btn btn-primario" id="btnPerfil">Entrar como admin</button>
+    </div>
+  </div>
+
+  <nav class="abas" id="abas" role="tablist">
+    <button class="aba ativa" data-view="painel" role="tab">Painel</button>
+    <button class="aba" data-view="registros" role="tab">Registros</button>
+    <button class="aba so-admin" data-view="nova" role="tab">Nova atividade</button>
+    <button class="aba so-admin" data-view="config" role="tab">Configurações</button>
+  </nav>
+</header>
+
+<main class="conteudo">
+
+  <!-- ========================================================== PAINEL -->
+  <section id="view-painel" class="view ativa">
+    <div class="cartoes-kpi" id="kpis"></div>
+
+    <div class="grade-2">
+      <article class="cartao">
+        <header class="cartao-cab">
+          <h2>Agenda de hoje</h2>
+          <span class="cartao-sub" id="dataHoje"></span>
+        </header>
+        <div id="listaHoje" class="lista-compacta"></div>
+      </article>
+
+      <article class="cartao">
+        <header class="cartao-cab">
+          <h2>Próximas atividades</h2>
+          <span class="cartao-sub">Previstas para os próximos dias</span>
+        </header>
+        <div id="listaProximas" class="lista-compacta"></div>
+      </article>
+    </div>
+
+    <article class="cartao">
+      <header class="cartao-cab">
+        <h2>Em andamento e pendências</h2>
+        <span class="cartao-sub">Atividades iniciadas ou com prazo vencido</span>
+      </header>
+      <div id="listaPendencias" class="lista-compacta"></div>
+    </article>
+  </section>
+
+  <!-- ======================================================= REGISTROS -->
+  <section id="view-registros" class="view">
+    <article class="cartao">
+      <header class="cartao-cab">
+        <h2>Filtros</h2>
+        <button class="btn btn-fantasma btn-p" id="btnLimparFiltros">Limpar filtros</button>
+      </header>
+
+      <div class="filtros">
+        <label class="campo campo-busca">
+          <span>Buscar</span>
+          <input type="search" id="fBusca" placeholder="Título, responsável, fase, local…">
+        </label>
+        <label class="campo">
+          <span>De</span>
+          <input type="date" id="fDe">
+        </label>
+        <label class="campo">
+          <span>Até</span>
+          <input type="date" id="fAte">
+        </label>
+        <label class="campo">
+          <span>Responsável</span>
+          <select id="fResponsavel"><option value="">Todos</option></select>
+        </label>
+        <label class="campo">
+          <span>Categoria</span>
+          <select id="fCategoria"><option value="">Todas</option></select>
+        </label>
+        <label class="campo">
+          <span>Situação</span>
+          <select id="fStatus">
+            <option value="">Todas</option>
+            <option value="planejada">Planejada</option>
+            <option value="em_andamento">Em andamento</option>
+            <option value="atrasada">Atrasada</option>
+            <option value="concluida">Concluída</option>
+            <option value="cancelada">Cancelada</option>
+          </select>
+        </label>
+      </div>
+    </article>
+
+    <article class="cartao">
+      <header class="cartao-cab">
+        <h2>Registros <span class="contador" id="contadorRegistros">0</span></h2>
+        <div class="grupo-btn">
+          <button class="btn btn-fantasma btn-p" id="btnXLS">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 21h16"/></svg>
+            Exportar XLS
+          </button>
+          <button class="btn btn-fantasma btn-p" id="btnPDF">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 21h16"/></svg>
+            Exportar PDF
+          </button>
+          <button class="btn btn-fantasma btn-p" id="btnImprimir">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="7" rx="2"/><path d="M8 16h8v5H8z"/></svg>
+            Imprimir
+          </button>
+        </div>
+      </header>
+
+      <div class="tabela-rolagem">
+        <table class="tabela" id="tabelaRegistros">
+          <thead>
+            <tr>
+              <th>Atividade</th>
+              <th>Início previsto</th>
+              <th>Término previsto</th>
+              <th>Duração</th>
+              <th>Progresso</th>
+              <th>Situação</th>
+              <th class="col-acoes"></th>
+            </tr>
+          </thead>
+          <tbody id="corpoRegistros"></tbody>
+        </table>
+      </div>
+      <div id="vazioRegistros" class="estado-vazio oculto">
+        <p>Nenhuma atividade encontrada com os filtros atuais.</p>
+      </div>
+    </article>
+  </section>
+
+  <!-- ==================================================== NOVA/EDITAR -->
+  <section id="view-nova" class="view">
+    <form id="formAtividade" autocomplete="off">
+      <div class="grade-form">
+
+        <article class="cartao">
+          <header class="cartao-cab">
+            <h2 id="tituloForm">Nova atividade</h2>
+            <span class="cartao-sub">Descreva a atividade e o sistema calcula as fases</span>
+          </header>
+
+          <div class="form-grade">
+            <label class="campo col-2">
+              <span>Título da atividade <b class="obrig">*</b></span>
+              <input type="text" id="aTitulo" required maxlength="160" placeholder="Ex.: Aula prática de manutenção de computadores">
+            </label>
+
+            <label class="campo">
+              <span>Responsável</span>
+              <input type="text" id="aResponsavel" list="listaResponsaveis" maxlength="80" placeholder="Nome do responsável">
+              <datalist id="listaResponsaveis"></datalist>
+            </label>
+
+            <label class="campo">
+              <span>Categoria</span>
+              <input type="text" id="aCategoria" list="listaCategorias" maxlength="60" placeholder="Ensino, Gestão, Infraestrutura…">
+              <datalist id="listaCategorias"></datalist>
+            </label>
+
+            <label class="campo">
+              <span>Local</span>
+              <input type="text" id="aLocal" maxlength="80" placeholder="Sala, laboratório, unidade…">
+            </label>
+
+            <label class="campo">
+              <span>Início previsto <b class="obrig">*</b></span>
+              <input type="datetime-local" id="aInicio" required>
+            </label>
+
+            <fieldset class="campo col-2 sem-borda">
+              <span class="rotulo">Como definir o término</span>
+              <div class="opcoes">
+                <label class="opcao">
+                  <input type="radio" name="modoTermino" value="duracao" checked>
+                  <span>Informar duração total</span>
+                </label>
+                <label class="opcao">
+                  <input type="radio" name="modoTermino" value="fim">
+                  <span>Informar término previsto</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="campo" id="grupoDuracao">
+              <span class="rotulo">Duração total</span>
+              <div class="dupla">
+                <input type="number" id="aHoras" min="0" max="999" step="1" value="4" aria-label="Horas">
+                <span class="sufixo">h</span>
+                <input type="number" id="aMinutos" min="0" max="59" step="5" value="0" aria-label="Minutos">
+                <span class="sufixo">min</span>
+              </div>
+            </div>
+
+            <label class="campo oculto" id="grupoFim">
+              <span>Término previsto</span>
+              <input type="datetime-local" id="aFim">
+            </label>
+
+            <label class="campo col-2">
+              <span>Descrição / observações</span>
+              <textarea id="aDescricao" rows="3" maxlength="1200" placeholder="Objetivo, participantes, materiais, encaminhamentos…"></textarea>
+            </label>
+          </div>
+        </article>
+
+        <article class="cartao">
+          <header class="cartao-cab">
+            <h2>Fases</h2>
+            <span class="cartao-sub" id="resumoJornada"></span>
+          </header>
+
+          <div class="form-grade">
+            <label class="campo">
+              <span>Modelo de fases</span>
+              <select id="aModelo"></select>
+            </label>
+
+            <fieldset class="campo sem-borda">
+              <span class="rotulo">Distribuição do tempo</span>
+              <div class="opcoes">
+                <label class="opcao">
+                  <input type="radio" name="modoDistribuicao" value="peso" checked>
+                  <span>Por peso (%)</span>
+                </label>
+                <label class="opcao">
+                  <input type="radio" name="modoDistribuicao" value="fixa">
+                  <span>Duração fixa por fase</span>
+                </label>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="fases-cab">
+            <span class="fc-ordem">#</span>
+            <span class="fc-nome">Nome da fase</span>
+            <span class="fc-valor" id="rotuloValorFase">Peso (%)</span>
+            <span class="fc-acoes"></span>
+          </div>
+          <div id="editorFases" class="editor-fases"></div>
+
+          <div class="linha-acoes">
+            <button type="button" class="btn btn-fantasma btn-p" id="btnAddFase">+ Adicionar fase</button>
+            <span class="aviso" id="avisoPesos"></span>
+          </div>
+        </article>
+
+        <article class="cartao">
+          <header class="cartao-cab">
+            <h2>Previsão calculada</h2>
+            <span class="cartao-sub" id="resumoPrevisao">—</span>
+          </header>
+          <div class="tabela-rolagem">
+            <table class="tabela tabela-previsao">
+              <thead>
+                <tr>
+                  <th>#</th><th>Fase</th><th>Início previsto</th>
+                  <th>Término previsto</th><th>Duração</th>
+                </tr>
+              </thead>
+              <tbody id="corpoPrevisao"></tbody>
+            </table>
+          </div>
+          <div class="barra-fases" id="barraPrevisao"></div>
+        </article>
+      </div>
+
+      <div class="rodape-form">
+        <button type="button" class="btn btn-fantasma" id="btnCancelarForm">Cancelar</button>
+        <button type="submit" class="btn btn-primario" id="btnSalvarAtividade">Salvar atividade</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ==================================================== CONFIGURAÇÕES -->
+  <section id="view-config" class="view">
+    <div class="grade-2">
+
+      <article class="cartao">
+        <header class="cartao-cab"><h2>Identificação</h2></header>
+        <div class="form-grade">
+          <label class="campo col-2">
+            <span>Organização</span>
+            <input type="text" id="cOrganizacao" maxlength="80">
+          </label>
+          <label class="campo col-2">
+            <span>Subtítulo dos relatórios</span>
+            <input type="text" id="cSubtitulo" maxlength="120">
+          </label>
+        </div>
+      </article>
+
+      <article class="cartao">
+        <header class="cartao-cab">
+          <h2>Jornada de trabalho</h2>
+          <span class="cartao-sub">Base para o cálculo das previsões</span>
+        </header>
+        <div class="form-grade">
+          <fieldset class="campo col-2 sem-borda">
+            <span class="rotulo">Modo</span>
+            <div class="opcoes">
+              <label class="opcao"><input type="radio" name="jModo" value="comercial" checked><span>Horário comercial</span></label>
+              <label class="opcao"><input type="radio" name="jModo" value="continuo"><span>Contínuo (24h)</span></label>
+            </div>
+          </fieldset>
+
+          <div class="campo col-2 grupo-comercial">
+            <span class="rotulo">Dias úteis</span>
+            <div class="dias-semana" id="jDias"></div>
+          </div>
+
+          <label class="campo grupo-comercial">
+            <span>Início do expediente</span>
+            <input type="time" id="jInicio">
+          </label>
+          <label class="campo grupo-comercial">
+            <span>Fim do expediente</span>
+            <input type="time" id="jFim">
+          </label>
+
+          <label class="campo col-2 grupo-comercial opcao-inline">
+            <input type="checkbox" id="jPausaAtiva">
+            <span>Descontar intervalo de almoço</span>
+          </label>
+          <label class="campo grupo-comercial">
+            <span>Início do intervalo</span>
+            <input type="time" id="jPausaInicio">
+          </label>
+          <label class="campo grupo-comercial">
+            <span>Fim do intervalo</span>
+            <input type="time" id="jPausaFim">
+          </label>
+        </div>
+      </article>
+
+      <article class="cartao">
+        <header class="cartao-cab">
+          <h2>Acesso administrativo</h2>
+          <span class="cartao-sub">PIN solicitado ao entrar no modo admin</span>
+        </header>
+        <div class="form-grade">
+          <label class="campo">
+            <span>Novo PIN</span>
+            <input type="password" id="cPin" inputmode="numeric" maxlength="12" placeholder="mínimo 4 caracteres">
+          </label>
+          <label class="campo">
+            <span>Repetir PIN</span>
+            <input type="password" id="cPin2" inputmode="numeric" maxlength="12">
+          </label>
+          <div class="campo col-2 alinha-inicio">
+            <button type="button" class="btn btn-fantasma btn-p" id="btnSalvarPin">Alterar PIN</button>
+            <p class="nota">Proteção local e simples: impede alterações acidentais, mas não substitui
+              autenticação de servidor. Os dados ficam no navegador deste computador.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="cartao">
+        <header class="cartao-cab">
+          <h2>Backup dos dados</h2>
+          <span class="cartao-sub">Arquivo JSON com todos os registros</span>
+        </header>
+        <div class="linha-acoes coluna">
+          <div class="grupo-btn">
+            <button type="button" class="btn btn-fantasma btn-p" id="btnBackup">Exportar backup</button>
+            <button type="button" class="btn btn-fantasma btn-p" id="btnRestaurar">Importar backup</button>
+            <input type="file" id="arquivoBackup" accept="application/json,.json" hidden>
+          </div>
+          <p class="nota">Ao importar você escolhe entre substituir tudo ou acrescentar aos registros existentes.</p>
+          <div class="grupo-btn">
+            <button type="button" class="btn btn-perigo btn-p" id="btnLimparDados">Apagar todos os registros</button>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <div class="rodape-form">
+      <button type="button" class="btn btn-primario" id="btnSalvarConfig">Salvar configurações</button>
+    </div>
+  </section>
+</main>
+
+<!-- ============================================================== MODAL -->
+<div class="modal-fundo oculto" id="modalFundo">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitulo">
+    <header class="modal-cab">
+      <div>
+        <h2 id="modalTitulo">Atividade</h2>
+        <p class="modal-sub" id="modalSub"></p>
+      </div>
+      <button class="btn btn-fantasma btn-icone" id="btnFecharModal" aria-label="Fechar">✕</button>
+    </header>
+    <div class="modal-corpo" id="modalCorpo"></div>
+    <footer class="modal-rodape" id="modalRodape"></footer>
+  </div>
+</div>
+
+<div id="notificacoes" class="notificacoes" aria-live="polite"></div>
+
+<script src="assets/js/util.js"></script>
+<script src="assets/js/schedule.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/pdf.js"></script>
+<script src="assets/js/export.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

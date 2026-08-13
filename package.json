@@ -1,0 +1,14 @@
+{
+  "name": "diario-bordo-cecape",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Diário de bordo de atividades com previsão automática das fases, perfis admin/visualização e exportação para XLS, PDF e impressão.",
+  "scripts": {
+    "start": "npx --yes http-server -p 8123 -s -c-1 .",
+    "test": "node tests/motor.test.js",
+    "test:interface": "node tests/interface.test.js",
+    "test:pdf": "node tests/valida-pdf.js tests/.saida/relatorio.pdf"
+  },
+  "keywords": ["diario-de-bordo", "registro-de-atividades", "cecape"],
+  "license": "MIT"
+}
