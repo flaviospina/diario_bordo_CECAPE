@@ -93,15 +93,34 @@ function currentFilters() {
   };
 }
 
+function markPeriod(kind) {
+  $$('[data-period]').forEach(b => b.classList.toggle('active', b.dataset.period === kind));
+}
+
 function setPeriod(kind) {
   const today = new Date();
-  const from = new Date(today);
-  if (kind === 'hoje') { /* from = today */ }
-  else if (kind === 'semana') from.setDate(today.getDate() - today.getDay() + 1);
-  else if (kind === 'mes') from.setDate(1);
-  else { $('#f-from').value = ''; $('#f-to').value = ''; load(); return; }
+  let from = new Date(today);
+  let to = new Date(today);
+  if (kind === 'hoje') {
+    /* from = to = hoje */
+  } else if (kind === 'semana') {
+    const dow = (today.getDay() + 6) % 7; // segunda-feira = 0
+    from.setDate(today.getDate() - dow);
+    to = new Date(from);
+    to.setDate(from.getDate() + 6);
+  } else if (kind === 'mes') {
+    from = new Date(today.getFullYear(), today.getMonth(), 1);
+    to = new Date(today.getFullYear(), today.getMonth() + 1, 0); // último dia do mês
+  } else { // tudo
+    $('#f-from').value = '';
+    $('#f-to').value = '';
+    markPeriod(kind);
+    load();
+    return;
+  }
   $('#f-from').value = isoDate(from);
-  $('#f-to').value = isoDate(today);
+  $('#f-to').value = isoDate(to);
+  markPeriod(kind);
   load();
 }
 
@@ -376,19 +395,15 @@ async function init() {
   $('#btn-xls').addEventListener('click', exportXLS);
   $('#btn-pdf').addEventListener('click', exportPDF);
   $('#btn-print').addEventListener('click', doPrint);
-  $('#f-from').addEventListener('change', load);
-  $('#f-to').addEventListener('change', load);
+  // Datas alteradas manualmente desmarcam o período rápido ativo
+  $('#f-from').addEventListener('change', () => { markPeriod(''); load(); });
+  $('#f-to').addEventListener('change', () => { markPeriod(''); load(); });
   let t;
   $('#f-q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 300); });
   $$('[data-period]').forEach(b => b.addEventListener('click', () => setPeriod(b.dataset.period)));
 
-  // Período inicial: mês atual
-  const today = new Date();
-  const first = new Date(today.getFullYear(), today.getMonth(), 1);
-  $('#f-from').value = isoDate(first);
-  $('#f-to').value = isoDate(today);
-
-  await load();
+  // Período inicial: mês atual (já destacado no botão "Mês")
+  setPeriod('mes');
 }
 
 document.addEventListener('DOMContentLoaded', init);

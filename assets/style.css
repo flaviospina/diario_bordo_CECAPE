@@ -257,6 +257,12 @@ body {
 .login-error { color: var(--danger); font-size: 13px; min-height: 18px; margin: 0; }
 
 .quick-periods { display: flex; gap: 6px; }
+.quick-periods .btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 650;
+}
 .phase-editor-label { margin-bottom: 10px; }
 
 /* ---------- Troca de senha ---------- */
