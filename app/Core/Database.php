@@ -14,11 +14,8 @@ final class Database
     public static function pdo(): PDO
     {
         if (self::$pdo === null) {
-            $dir = dirname(DB_PATH);
-            if (!is_dir($dir)) {
-                mkdir($dir, 0775, true);
-            }
-            self::$pdo = new PDO('sqlite:' . DB_PATH, null, null, [
+            $path = self::resolvePath();
+            self::$pdo = new PDO('sqlite:' . $path, null, null, [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
@@ -27,6 +24,46 @@ final class Database
             self::migrate(self::$pdo);
         }
         return self::$pdo;
+    }
+
+    /**
+     * Caminho do arquivo do banco.
+     *
+     * Preferência: DB_PATH_OVERRIDE (config.local.php) apontando para fora da
+     * raiz web. Sem override, usa data/ com um nome ALEATÓRIO gravado em
+     * data/dbname.php — assim, mesmo num servidor que ignore .htaccess
+     * (Nginx, Apache sem AllowOverride), o banco não é adivinhável por URL e
+     * o marcador, por ser PHP com guarda, devolve página vazia se acessado.
+     */
+    private static function resolvePath(): string
+    {
+        if (defined('DB_PATH_OVERRIDE')) {
+            $dir = dirname(DB_PATH_OVERRIDE);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0770, true);
+            }
+            return DB_PATH_OVERRIDE;
+        }
+
+        $dir = BASE_PATH . '/data';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+        $marker = $dir . '/dbname.php';
+        if (is_file($marker)) {
+            $name = (string)require $marker;
+        } else {
+            $name = 'diario-' . bin2hex(random_bytes(16)) . '.sqlite';
+            // Migra instalação antiga que usava nome fixo
+            if (is_file($dir . '/diario.sqlite')) {
+                rename($dir . '/diario.sqlite', $dir . '/' . $name);
+            }
+            $content = "<?php defined('APP_RUNNING') or exit; return " . var_export($name, true) . ";\n";
+            if (file_put_contents($marker, $content, LOCK_EX) === false) {
+                throw new \RuntimeException('Sem permissão de escrita em data/. Ajuste as permissões da pasta.');
+            }
+        }
+        return $dir . '/' . $name;
     }
 
     private static function migrate(PDO $pdo): void

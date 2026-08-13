@@ -36,12 +36,14 @@ Aplicação PHP 8+ com PDO/SQLite em estrutura MVC com front controller único:
 
 ```
 index.php                     Front controller — único ponto de entrada (rotas via ?r=...)
-.htaccess                     Bloqueia app/ e data/, URLs amigáveis, sem listagem de diretórios
+.htaccess                     Bloqueia app/ e data/, URLs amigáveis (Apache)
+nginx.conf.example            Blocos equivalentes para VPS com Nginx
 assets/                       CSS e JavaScript (públicos)
-data/                         Banco SQLite (negado ao navegador, criado automaticamente)
+data/                         Banco SQLite com nome aleatório (criado automaticamente)
 app/
 ├── bootstrap.php             Autoloader PSR-4 e helpers (escape de saída, URLs)
 ├── Config/config.php         Configurações (fuso, limites, fases padrão)
+├── Config/config.local.php.example  Ajustes por servidor (ex.: banco fora da raiz web)
 ├── Core/
 │   ├── Router.php            Mapeamento método+rota → controller/ação
 │   ├── Controller.php        Base: respostas JSON, corpo da requisição, guardas
@@ -74,15 +76,24 @@ app/
 - **Senha**: hash `password_hash`/bcrypt armazenado no banco; troca autenticada pelo próprio painel (exige a senha atual, mínimo de 8 caracteres); re-hash automático quando o algoritmo padrão do PHP evoluir.
 - **Escape de saída** em todas as views (`e()`) e no front-end (`esc()`); validação e limites de tamanho em todas as entradas.
 - **Cabeçalhos**: Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy.
-- **Código e dados inacessíveis**: `app/` e `data/` negados por `.htaccess`; além disso todo arquivo PHP da aplicação sai vazio se chamado diretamente (guarda `APP_RUNNING`).
+- **Código e dados inacessíveis**, com defesa em camadas que funciona em Apache e Nginx:
+  - `.htaccess` nega `app/` e `data/` (Apache com AllowOverride);
+  - `nginx.conf.example` traz os blocos equivalentes para Nginx;
+  - todo arquivo PHP da aplicação sai vazio se chamado diretamente (guarda `APP_RUNNING`);
+  - o arquivo do banco recebe **nome aleatório** não adivinhável por URL (registrado em `data/dbname.php`, que também sai vazio via web), e `index.html` vazios impedem listagem de diretório;
+  - opcionalmente, `config.local.php` move o banco para **fora da raiz web** (recomendado em VPS).
 - **Erros** nunca exibidos ao visitante (registrados no log do servidor).
 
-## Instalação (HostGator ou similar)
+## Instalação em VPS (cecapescs.com.br/diariobordo)
 
-1. Envie todos os arquivos para `public_html/diariobordo` (mantendo os `.htaccess`).
-2. Acesse `https://cecapescs.com.br/diariobordo/index.php?r=admin` e entre com a senha inicial: **cecape2026**.
-3. **Troque a senha imediatamente** no painel, em "Trocar senha do administrador".
-4. Compartilhe com a direção apenas `https://cecapescs.com.br/diariobordo/` (modo consulta).
+1. Crie a pasta `diariobordo` dentro do **document root do domínio** `cecapescs.com.br` e envie todos os arquivos do projeto para ela (via git clone, SFTP ou painel — preserve os `.htaccess`).
+2. Garanta PHP 8+ com SQLite: `php -v` e `php -m | grep -i sqlite` (em Debian/Ubuntu: `sudo apt install php-sqlite3`).
+3. Dê permissão de escrita na pasta `data/` ao usuário do PHP (ex.: `chown -R www-data:www-data diariobordo` ou `chmod 775 diariobordo/data`).
+4. **Se o servidor for Nginx** (ou Apache com AllowOverride desativado), aplique os blocos de `nginx.conf.example` na configuração do domínio e recarregue o serviço.
+5. (Recomendado) Copie `app/Config/config.local.php.example` para `config.local.php` e aponte o banco para fora da raiz web.
+6. Acesse `https://cecapescs.com.br/diariobordo/index.php?r=admin`, entre com a senha inicial **cecape2026** e **troque-a imediatamente** em "Trocar senha do administrador".
+7. Verifique a proteção: `https://cecapescs.com.br/diariobordo/data/` e `.../diariobordo/app/Config/config.php` devem retornar erro ou página vazia.
+8. Compartilhe com a direção apenas `https://cecapescs.com.br/diariobordo/` (modo consulta).
 
 O banco SQLite é criado automaticamente no primeiro acesso — não é preciso configurar MySQL nem editar arquivos.
 

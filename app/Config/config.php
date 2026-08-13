@@ -13,8 +13,6 @@ date_default_timezone_set('America/Sao_Paulo');
 const APP_NAME  = 'Diário de Bordo · CECAPE';
 const APP_OWNER = 'Prof. Flávio Spina';
 
-define('DB_PATH', BASE_PATH . '/data/diario.sqlite');
-
 /**
  * Hash da senha inicial do administrador (senha padrão: cecape2026).
  * Usado apenas para semear o banco no primeiro acesso; depois disso a senha
@@ -43,3 +41,12 @@ const DEFAULT_PHASES = [
     ['name' => 'Verificação e ajustes', 'weight' => 20],
     ['name' => 'Conclusão e registro',  'weight' => 10],
 ];
+
+/*
+ * Ajustes específicos do servidor (não versionado no git).
+ * Copie config.local.php.example para config.local.php para, por exemplo,
+ * guardar o banco de dados fora da raiz web (recomendado em VPS).
+ */
+if (is_file(__DIR__ . '/config.local.php')) {
+    require __DIR__ . '/config.local.php';
+}

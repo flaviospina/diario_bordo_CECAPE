@@ -1,0 +1,28 @@
+# Diário de Bordo CECAPE — exemplo de configuração para Nginx + PHP-FPM
+#
+# Use APENAS se o seu VPS servir o cecapescs.com.br com Nginx (no Apache o
+# .htaccess incluído no projeto já faz este papel).
+#
+# Cole estes blocos DENTRO do bloco `server { ... }` do domínio
+# cecapescs.com.br (geralmente em /etc/nginx/sites-available/ ou
+# /etc/nginx/conf.d/) e ajuste o socket do PHP-FPM na última linha
+# conforme a versão instalada (ex.: php8.2-fpm.sock).
+#
+# Depois: sudo nginx -t && sudo systemctl reload nginx
+
+# 1) Bloqueia o código da aplicação e o banco de dados
+location ^~ /diariobordo/app/  { deny all; }
+location ^~ /diariobordo/data/ { deny all; }
+
+# 2) Arquivos estáticos direto; o resto passa pelo front controller
+location /diariobordo/ {
+    index index.php;
+    try_files $uri /diariobordo/index.php$is_args$args;
+}
+
+# 3) Executa o front controller via PHP-FPM
+location = /diariobordo/index.php {
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+}

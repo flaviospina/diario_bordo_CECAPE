@@ -1,0 +1,19 @@
+<?php
+declare(strict_types=1);
+
+defined('APP_RUNNING') or exit;
+
+/**
+ * Ajustes específicos deste servidor — copie este arquivo para
+ * config.local.php (no mesmo diretório) e descomente o que precisar.
+ * O config.local.php não é versionado no git.
+ */
+
+/*
+ * RECOMENDADO EM VPS: guardar o banco de dados FORA da raiz web,
+ * em um diretório que o usuário do PHP (www-data etc.) possa escrever.
+ * Exemplo:
+ *   sudo mkdir -p /var/lib/diariobordo
+ *   sudo chown www-data:www-data /var/lib/diariobordo
+ */
+// define('DB_PATH_OVERRIDE', '/var/lib/diariobordo/diario.sqlite');

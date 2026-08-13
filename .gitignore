@@ -1,2 +1,6 @@
 # Banco de dados local (criado automaticamente no primeiro uso)
 data/*.sqlite
+data/dbname.php
+
+# Ajustes específicos de cada servidor
+app/Config/config.local.php
