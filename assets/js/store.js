@@ -1,11 +1,16 @@
 /* =========================================================================
- * store.js — persistência (localStorage), CRUD e regras de status
+ * store.js — estado da aplicação sobre a API (MySQL)
+ *
+ * As atividades ficam em um cache em memória, carregado no início da sessão.
+ * As leituras (filtros, status, progresso) são síncronas sobre esse cache; as
+ * escritas vão ao servidor e só então atualizam o cache. Assim a interface
+ * continua fluida e o banco permanece a única fonte da verdade.
  * ========================================================================= */
 (function (global) {
   'use strict';
 
   var U = global.Util;
-  var CHAVE = 'diario_bordo_cecape_v1';
+  var Api = global.Api;
 
   var Store = {};
 
@@ -20,64 +25,75 @@
 
   var estado = {
     atividades: [],
+    usuario: null,
     config: {
       organizacao: 'CECAPE',
       subtitulo: 'Diário de Bordo — Registro de Atividades',
-      jornada: null,             // preenchida com Schedule.JORNADA_PADRAO
-      pinHash: U.hash('1234'),
-      tema: 'claro',
-      exemplosCarregados: false
-    }
+      jornada: null
+    },
+    tema: 'claro'
   };
 
-  /* ----------------------------------------------------------- persistência */
+  /* ------------------------------------------------------------- sessão -- */
 
-  function salvar() {
-    try {
-      localStorage.setItem(CHAVE, JSON.stringify(estado));
-      return true;
-    } catch (e) {
-      console.error('Falha ao salvar no armazenamento local:', e);
-      return false;
-    }
-  }
-  Store.salvar = salvar;
+  Store.usuario = function () { return estado.usuario; };
 
+  Store.ehAdmin = function () {
+    return !!estado.usuario && estado.usuario.perfil === 'admin';
+  };
+
+  /** O tema é preferência visual: fica no navegador mesmo. */
+  Store.tema = function () {
+    try { return localStorage.getItem('diario_tema') || 'claro'; }
+    catch (e) { return 'claro'; }
+  };
+
+  Store.salvarTema = function (tema) {
+    estado.tema = tema;
+    try { localStorage.setItem('diario_tema', tema); } catch (e) { /* modo privado */ }
+  };
+
+  /* ------------------------------------------------------------ carga -- */
+
+  /**
+   * Carrega sessão, configurações e atividades.
+   * @returns {Promise<boolean>} true se há usuário autenticado.
+   */
   Store.carregar = function () {
-    var bruto = null;
-    try { bruto = localStorage.getItem(CHAVE); } catch (e) { /* modo privado */ }
-    if (bruto) {
-      try {
-        var dados = JSON.parse(bruto);
-        if (dados && typeof dados === 'object') {
-          estado.atividades = Array.isArray(dados.atividades) ? dados.atividades : [];
-          estado.config = Object.assign({}, estado.config, dados.config || {});
-        }
-      } catch (e) {
-        console.error('Dados corrompidos no armazenamento local:', e);
-      }
-    }
-    if (!estado.config.jornada) {
-      estado.config.jornada = Object.assign({}, global.Schedule.JORNADA_PADRAO);
-    }
-    if (!estado.config.exemplosCarregados && estado.atividades.length === 0) {
-      semear();
-      estado.config.exemplosCarregados = true;
-      salvar();
-    }
-    return estado;
+    return Api.sessao().then(function (s) {
+      estado.usuario = s.usuario || null;
+      if (!estado.usuario) return false;
+      // Com troca de senha pendente, o servidor bloqueia as demais rotas.
+      if (estado.usuario.deveTrocarSenha) return true;
+      return Store.recarregar().then(function () { return true; });
+    });
+  };
+
+  Store.recarregar = function () {
+    return Promise.all([Api.obterConfig(), Api.listarAtividades()])
+      .then(function (r) {
+        estado.config = Object.assign({}, estado.config, r[0]);
+        estado.atividades = r[1];
+        return estado;
+      });
   };
 
   Store.estado = function () { return estado; };
   Store.config = function () { return estado.config; };
 
   Store.salvarConfig = function (parcial) {
-    estado.config = Object.assign({}, estado.config, parcial || {});
-    salvar();
-    return estado.config;
+    var novo = Object.assign({}, estado.config, parcial || {});
+    return Api.salvarConfig({
+      organizacao: novo.organizacao,
+      subtitulo: novo.subtitulo,
+      jornada: novo.jornada
+    }).then(function (config) {
+      estado.config = Object.assign({}, estado.config, config);
+      return estado.config;
+    });
   };
 
-  /* ------------------------------------------------------------------ CRUD */
+  /* -------------------------------------------------------------- CRUD -- */
 
   Store.listar = function () { return estado.atividades.slice(); };
 
@@ -88,47 +104,66 @@
     return null;
   };
 
-  Store.criar = function (dados) {
-    var agora = new Date().toISOString();
-    var atividade = Object.assign({
-      id: U.uid('atv'),
-      titulo: '',
-      descricao: '',
-      responsavel: '',
-      local: '',
-      categoria: '',
-      inicioPrevisto: '',
-      fimPrevisto: '',
-      inicioReal: '',
-      fimReal: '',
-      cancelada: false,
-      fases: []
-    }, dados, { criadoEm: agora, atualizadoEm: agora });
-    estado.atividades.push(atividade);
-    salvar();
+  function ordenar() {
+    estado.atividades.sort(function (a, b) {
+      return (U.parseLocal(b.inicioPrevisto) || 0) - (U.parseLocal(a.inicioPrevisto) || 0);
+    });
+  }
+
+  function substituir(atividade) {
+    var i = estado.atividades.findIndex(function (a) { return a.id === atividade.id; });
+    if (i >= 0) estado.atividades[i] = atividade;
+    else estado.atividades.push(atividade);
+    ordenar();
     return atividade;
+  }
+
+  Store.criar = function (dados) {
+    return Api.criarAtividade(paraApi(dados)).then(substituir);
   };
 
   Store.atualizar = function (id, dados) {
-    var atv = Store.obter(id);
-    if (!atv) return null;
-    Object.assign(atv, dados, { atualizadoEm: new Date().toISOString() });
-    salvar();
-    return atv;
+    var base = Object.assign({}, Store.obter(id) || {}, dados, { id: id });
+    return Api.atualizarAtividade(paraApi(base)).then(substituir);
   };
 
   Store.remover = function (id) {
-    var antes = estado.atividades.length;
-    estado.atividades = estado.atividades.filter(function (a) { return a.id !== id; });
-    salvar();
-    return estado.atividades.length < antes;
+    return Api.excluirAtividade(id).then(function () {
+      estado.atividades = estado.atividades.filter(function (a) { return a.id !== id; });
+      return true;
+    });
   };
 
-  Store.limparTudo = function () {
-    estado.atividades = [];
-    estado.config.exemplosCarregados = true;
-    salvar();
-  };
+  /** Mantém no corpo da requisição apenas os campos que o servidor aceita. */
+  function paraApi(a) {
+    return {
+      id: a.id,
+      titulo: a.titulo || '',
+      descricao: a.descricao || '',
+      responsavel: a.responsavel || '',
+      categoria: a.categoria || '',
+      local: a.local || '',
+      modelo: a.modelo || '',
+      inicioPrevisto: a.inicioPrevisto || '',
+      fimPrevisto: a.fimPrevisto || '',
+      inicioReal: a.inicioReal || '',
+      fimReal: a.fimReal || '',
+      cancelada: !!a.cancelada,
+      fases: (a.fases || []).map(function (f) {
+        return {
+          nome: f.nome || '',
+          peso: +f.peso || 0,
+          duracaoMin: Math.max(1, +f.duracaoMin || 1),
+          inicioPrevisto: f.inicioPrevisto || '',
+          fimPrevisto: f.fimPrevisto || '',
+          inicioReal: f.inicioReal || '',
+          fimReal: f.fimReal || '',
+          observacao: f.observacao || ''
+        };
+      })
+    };
+  }
+  Store.paraApi = paraApi;
 
   /* ---------------------------------------------------------------- status */
 
@@ -148,17 +183,13 @@
       if (f.inicioReal) iniciadas++;
     });
     if (atv.fimReal || (fases.length && concluidas === fases.length)) return 'concluida';
+    var fim = U.parseLocal(atv.fimPrevisto);
     if (atv.inicioReal || iniciadas > 0) {
-      var fim = U.parseLocal(atv.fimPrevisto);
-      if (fim && fim < new Date()) return 'atrasada';
-      return 'em_andamento';
+      return (fim && fim < new Date()) ? 'atrasada' : 'em_andamento';
     }
-    var ini = U.parseLocal(atv.fimPrevisto);
-    if (ini && ini < new Date()) return 'atrasada';
-    return 'planejada';
+    return (fim && fim < new Date()) ? 'atrasada' : 'planejada';
   };
 
-  /** Percentual concluído com base nas fases finalizadas (ponderado por duração). */
   Store.progresso = function (atv) {
     var fases = atv.fases || [];
     if (!fases.length) return atv.fimReal ? 100 : 0;
@@ -179,9 +210,8 @@
   };
 
   Store.duracaoRealizada = function (atv) {
-    var fases = atv.fases || [];
     var total = 0, temAlgum = false;
-    fases.forEach(function (f) {
+    (atv.fases || []).forEach(function (f) {
       if (f.inicioReal && f.fimReal) {
         var d = U.diffMin(f.inicioReal, f.fimReal);
         if (d != null && d > 0) { total += d; temAlgum = true; }
@@ -192,44 +222,39 @@
     return 0;
   };
 
-  /** Desvio (realizado - previsto) em minutos; null quando ainda não concluída. */
   Store.desvio = function (atv) {
     var real = Store.duracaoRealizada(atv);
     if (!real) return null;
     var prev = Store.duracaoPrevista(atv);
-    if (!prev) return null;
-    return real - prev;
+    return prev ? real - prev : null;
   };
 
   /** Sincroniza início/fim da atividade a partir das fases. */
   Store.sincronizarTotais = function (atv) {
     var fases = atv.fases || [];
-    if (fases.length) {
-      atv.inicioPrevisto = fases[0].inicioPrevisto || atv.inicioPrevisto;
-      atv.fimPrevisto = fases[fases.length - 1].fimPrevisto || atv.fimPrevisto;
+    if (!fases.length) return atv;
 
-      var reais = fases.filter(function (f) { return f.inicioReal; })
-        .map(function (f) { return U.parseLocal(f.inicioReal); })
-        .filter(Boolean).sort(function (a, b) { return a - b; });
-      atv.inicioReal = reais.length ? U.toInput(reais[0]) : '';
+    atv.inicioPrevisto = fases[0].inicioPrevisto || atv.inicioPrevisto;
+    atv.fimPrevisto = fases[fases.length - 1].fimPrevisto || atv.fimPrevisto;
 
-      var todasConcluidas = fases.length > 0 && fases.every(function (f) { return f.fimReal; });
-      if (todasConcluidas) {
-        var fins = fases.map(function (f) { return U.parseLocal(f.fimReal); })
-          .filter(Boolean).sort(function (a, b) { return b - a; });
-        atv.fimReal = fins.length ? U.toInput(fins[0]) : '';
-      } else {
-        atv.fimReal = '';
-      }
+    var inicios = fases.filter(function (f) { return f.inicioReal; })
+      .map(function (f) { return U.parseLocal(f.inicioReal); })
+      .filter(Boolean).sort(function (a, b) { return a - b; });
+    atv.inicioReal = inicios.length ? U.toInput(inicios[0]) : '';
+
+    var todas = fases.every(function (f) { return f.fimReal; });
+    if (todas) {
+      var fins = fases.map(function (f) { return U.parseLocal(f.fimReal); })
+        .filter(Boolean).sort(function (a, b) { return b - a; });
+      atv.fimReal = fins.length ? U.toInput(fins[0]) : '';
+    } else {
+      atv.fimReal = '';
     }
     return atv;
   };
 
   /* --------------------------------------------------------------- filtros */
 
-  /**
-   * @param {Object} f  { busca, responsavel, categoria, status, de, ate }
-   */
   Store.filtrar = function (f) {
     f = f || {};
     var busca = U.normalizar(f.busca || '');
@@ -257,9 +282,7 @@
       }
       return true;
     }).sort(function (a, b) {
-      var da = U.parseLocal(a.inicioPrevisto) || 0;
-      var db = U.parseLocal(b.inicioPrevisto) || 0;
-      return db - da;
+      return (U.parseLocal(b.inicioPrevisto) || 0) - (U.parseLocal(a.inicioPrevisto) || 0);
     });
   };
 
@@ -275,131 +298,27 @@
     return Object.keys(set).sort();
   };
 
-  /* --------------------------------------------------- backup / restauração */
+  /* ---------------------------------------------------- backup / importação */
 
   Store.exportarJSON = function () {
     return JSON.stringify({
-      versao: 1,
+      versao: 2,
       exportadoEm: new Date().toISOString(),
       config: estado.config,
       atividades: estado.atividades
     }, null, 2);
   };
 
+  /** Envia o backup ao servidor; a validação real acontece lá. */
   Store.importarJSON = function (texto, substituir) {
     var dados = JSON.parse(texto);
     if (!dados || !Array.isArray(dados.atividades)) {
       throw new Error('Arquivo inválido: não contém a lista de atividades.');
     }
-    var recebidas = dados.atividades.map(function (a) {
-      if (!a.id) a.id = U.uid('atv');
-      a.fases = Array.isArray(a.fases) ? a.fases : [];
-      return a;
+    return Api.importar(dados.atividades, substituir).then(function (n) {
+      return Store.recarregar().then(function () { return n; });
     });
-    if (substituir) {
-      estado.atividades = recebidas;
-    } else {
-      var existentes = {};
-      estado.atividades.forEach(function (a) { existentes[a.id] = true; });
-      recebidas.forEach(function (a) {
-        if (existentes[a.id]) a.id = U.uid('atv');
-        estado.atividades.push(a);
-      });
-    }
-    if (dados.config) {
-      // preserva o PIN atual: o backup não deve alterar o acesso administrativo
-      var pin = estado.config.pinHash;
-      estado.config = Object.assign({}, estado.config, dados.config, { pinHash: pin });
-    }
-    salvar();
-    return recebidas.length;
   };
-
-  /* ----------------------------------------------------- dados de exemplo */
-
-  function semear() {
-    var S = global.Schedule;
-    var agora = new Date();
-
-    /** Data/hora relativa a hoje, com hora cheia. */
-    function em(dias, hora) {
-      return new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + dias, hora, 0, 0, 0);
-    }
-
-    function criarExemplo(titulo, inicio, duracao, modeloId, extras, jornada) {
-      var modelo = S.modelo(modeloId);
-      var plano = S.planejar({
-        inicio: inicio,
-        duracaoMin: duracao,
-        fases: modelo.fases.map(function (f) { return { nome: f.nome, peso: f.peso }; }),
-        distribuir: 'peso',
-        jornada: jornada || estado.config.jornada
-      });
-      var atv = Object.assign({
-        id: U.uid('atv'),
-        titulo: titulo,
-        descricao: '',
-        responsavel: '',
-        local: '',
-        categoria: '',
-        cancelada: false,
-        modelo: modeloId,
-        fases: plano.fases,
-        inicioPrevisto: U.toInput(plano.inicio),
-        fimPrevisto: U.toInput(plano.fim),
-        inicioReal: '',
-        fimReal: '',
-        criadoEm: new Date().toISOString(),
-        atualizadoEm: new Date().toISOString()
-      }, extras || {});
-      estado.atividades.push(atv);
-      return atv;
-    }
-
-    // 1) Concluída: tudo executado conforme o previsto
-    var a1 = criarExemplo('Aula inaugural — Informática Básica', em(-7, 8), 240, 'aula', {
-      responsavel: 'Prof. Flávio Spina',
-      local: 'Laboratório 2',
-      categoria: 'Ensino',
-      descricao: 'Apresentação do plano de curso, diagnóstico da turma e primeiros exercícios.'
-    });
-    a1.fases.forEach(function (f) {
-      f.inicioReal = f.inicioPrevisto;
-      f.fimReal = f.fimPrevisto;
-    });
-    Store.sincronizarTotais(a1);
-
-    // 2) Em andamento: começou há uma hora e termina daqui a duas.
-    //    Usa jornada contínua para o exemplo fazer sentido a qualquer hora do dia.
-    var a2 = criarExemplo('Manutenção preventiva do laboratório',
-      new Date(agora.getTime() - 60 * 60000), 180, 'padrao', {
-        responsavel: 'Equipe de TI',
-        local: 'Laboratório 1',
-        categoria: 'Infraestrutura',
-        descricao: 'Limpeza, atualização das imagens e teste de rede das 20 estações.'
-      }, { modo: 'continuo' });
-    a2.fases.forEach(function (f) {
-      if (U.parseLocal(f.inicioPrevisto) <= agora) f.inicioReal = f.inicioPrevisto;
-      if (U.parseLocal(f.fimPrevisto) <= agora) f.fimReal = f.fimPrevisto;
-    });
-    Store.sincronizarTotais(a2);
-
-    // 3) Atrasada: prazo vencido sem nenhum registro de execução
-    criarExemplo('Inventário dos equipamentos da unidade', em(-3, 14), 300, 'projeto', {
-      responsavel: 'Equipe de TI',
-      local: 'Almoxarifado',
-      categoria: 'Infraestrutura',
-      descricao: 'Conferência física e atualização da planilha patrimonial.'
-    });
-
-    // 4) Planejada: ainda no futuro
-    criarExemplo('Reunião pedagógica mensal', em(4, 14), 120, 'reuniao', {
-      responsavel: 'Coordenação',
-      local: 'Sala de reuniões',
-      categoria: 'Gestão',
-      descricao: 'Avaliação dos indicadores do mês e planejamento do próximo ciclo.'
-    });
-  }
 
   global.Store = Store;
 })(window);

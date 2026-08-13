@@ -1,0 +1,38 @@
+# =========================================================================
+#  Proteção da pasta api/ (Apache — HostGator, cPanel e similares)
+# =========================================================================
+
+# Nada de listagem de diretório.
+Options -Indexes
+
+# Bloqueia acesso direto a qualquer arquivo que não seja o index.php.
+# As classes em lib/ e rotas/ também têm a guarda DIARIO_APP no topo, mas o
+# servidor web nem deve entregá-las.
+<FilesMatch "^(config|config\.example)\.php$">
+    Require all denied
+</FilesMatch>
+
+RedirectMatch 404 ^/.*/api/(lib|rotas)/.*$
+
+# Impede que qualquer arquivo com estas extensões seja baixado como texto.
+<FilesMatch "\.(ini|log|sql|md|json|example)$">
+    Require all denied
+</FilesMatch>
+
+# URLs amigáveis opcionais: /api/atividades → /api/index.php?r=atividades
+# (a aplicação usa a forma com ?r= , que funciona mesmo sem mod_rewrite)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^([a-z]+(?:/[a-z]+)?)/?$ index.php?r=$1 [QSA,L]
+</IfModule>
+
+# Cabeçalhos de segurança também no nível do servidor (a aplicação já os envia;
+# aqui cobrimos respostas de erro geradas pelo próprio Apache).
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "no-referrer"
+    Header always unset X-Powered-By
+</IfModule>

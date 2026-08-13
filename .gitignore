@@ -2,3 +2,6 @@ node_modules/
 tests/.saida/
 *.log
 .DS_Store
+
+# Configuração local da API (credenciais do banco)
+api/config.php

@@ -28,14 +28,18 @@
     </div>
 
     <div class="topo-acoes">
-      <span class="selo-perfil" id="seloPerfil" title="Perfil de acesso atual">
-        <span class="ponto"></span><span id="seloPerfilTxt">Visualização</span>
-      </span>
+      <div class="usuario-atual" id="usuarioAtual">
+        <span class="usuario-nome" id="usuarioNome">—</span>
+        <span class="selo-perfil" id="seloPerfil" title="Perfil de acesso">
+          <span class="ponto"></span><span id="seloPerfilTxt">Visualização</span>
+        </span>
+      </div>
       <button class="btn btn-fantasma" id="btnTema" title="Alternar tema claro/escuro" aria-label="Alternar tema">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
       </button>
-      <button class="btn btn-primario" id="btnPerfil">Entrar como admin</button>
+      <button class="btn btn-fantasma" id="btnMinhaSenha">Minha senha</button>
+      <button class="btn btn-primario" id="btnSair">Sair</button>
     </div>
   </div>
 
@@ -43,6 +47,7 @@
     <button class="aba ativa" data-view="painel" role="tab">Painel</button>
     <button class="aba" data-view="registros" role="tab">Registros</button>
     <button class="aba so-admin" data-view="nova" role="tab">Nova atividade</button>
+    <button class="aba so-admin" data-view="usuarios" role="tab">Usuários</button>
     <button class="aba so-admin" data-view="config" role="tab">Configurações</button>
   </nav>
 </header>
@@ -310,6 +315,44 @@
     </form>
   </section>
 
+  <!-- ========================================================= USUÁRIOS -->
+  <section id="view-usuarios" class="view">
+    <article class="cartao">
+      <header class="cartao-cab">
+        <h2>Usuários <span class="contador" id="contadorUsuarios">0</span></h2>
+        <button class="btn btn-primario btn-p" id="btnNovoUsuario">+ Novo usuário</button>
+      </header>
+      <div class="tabela-rolagem">
+        <table class="tabela" id="tabelaUsuarios">
+          <thead>
+            <tr>
+              <th>Nome</th><th>Login</th><th>E-mail</th><th>Perfil</th>
+              <th>Situação</th><th>Último acesso</th><th class="col-acoes"></th>
+            </tr>
+          </thead>
+          <tbody id="corpoUsuarios"></tbody>
+        </table>
+      </div>
+      <p class="nota">Somente administradores criam contas — não há auto-cadastro.
+        Ao redefinir a senha de alguém, a troca no próximo acesso é obrigatória.</p>
+    </article>
+
+    <article class="cartao">
+      <header class="cartao-cab">
+        <h2>Trilha de auditoria</h2>
+        <button class="btn btn-fantasma btn-p" id="btnAtualizarAuditoria">Atualizar</button>
+      </header>
+      <div class="tabela-rolagem altura-limitada">
+        <table class="tabela">
+          <thead>
+            <tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Alvo</th><th>Origem</th></tr>
+          </thead>
+          <tbody id="corpoAuditoria"></tbody>
+        </table>
+      </div>
+    </article>
+  </section>
+
   <!-- ==================================================== CONFIGURAÇÕES -->
   <section id="view-config" class="view">
     <div class="grade-2">
@@ -373,28 +416,6 @@
 
       <article class="cartao">
         <header class="cartao-cab">
-          <h2>Acesso administrativo</h2>
-          <span class="cartao-sub">PIN solicitado ao entrar no modo admin</span>
-        </header>
-        <div class="form-grade">
-          <label class="campo">
-            <span>Novo PIN</span>
-            <input type="password" id="cPin" inputmode="numeric" maxlength="12" placeholder="mínimo 4 caracteres">
-          </label>
-          <label class="campo">
-            <span>Repetir PIN</span>
-            <input type="password" id="cPin2" inputmode="numeric" maxlength="12">
-          </label>
-          <div class="campo col-2 alinha-inicio">
-            <button type="button" class="btn btn-fantasma btn-p" id="btnSalvarPin">Alterar PIN</button>
-            <p class="nota">Proteção local e simples: impede alterações acidentais, mas não substitui
-              autenticação de servidor. Os dados ficam no navegador deste computador.</p>
-          </div>
-        </div>
-      </article>
-
-      <article class="cartao">
-        <header class="cartao-cab">
           <h2>Backup dos dados</h2>
           <span class="cartao-sub">Arquivo JSON com todos os registros</span>
         </header>
@@ -404,10 +425,9 @@
             <button type="button" class="btn btn-fantasma btn-p" id="btnRestaurar">Importar backup</button>
             <input type="file" id="arquivoBackup" accept="application/json,.json" hidden>
           </div>
-          <p class="nota">Ao importar você escolhe entre substituir tudo ou acrescentar aos registros existentes.</p>
-          <div class="grupo-btn">
-            <button type="button" class="btn btn-perigo btn-p" id="btnLimparDados">Apagar todos os registros</button>
-          </div>
+          <p class="nota">A importação envia o arquivo ao servidor, que valida cada registro
+            antes de gravar. Você escolhe entre substituir tudo ou acrescentar aos registros
+            existentes; em caso de erro, nada é gravado.</p>
         </div>
       </article>
     </div>
@@ -437,6 +457,7 @@
 
 <script src="assets/js/util.js"></script>
 <script src="assets/js/schedule.js"></script>
+<script src="assets/js/api.js"></script>
 <script src="assets/js/store.js"></script>
 <script src="assets/js/pdf.js"></script>
 <script src="assets/js/export.js"></script>

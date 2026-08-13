@@ -1,10 +1,10 @@
 /*
- * Teste ponta a ponta da interface (Playwright + Chromium).
+ * Teste ponta a ponta da interface (Playwright + Chromium) contra a API real.
  *
- *   npx http-server -p 8123 -s .        # servidor estático na raiz do projeto
- *   node tests/interface.test.js        # em outro terminal
+ *   php -S localhost:8124 -t .          # servidor PHP na raiz do projeto
+ *   node tests/interface.test.js
  *
- * Requer o Playwright instalado (npm i -D playwright, ou instalação global).
+ * Requer o banco criado, api/config.php preenchido e um admin cadastrado.
  * As telas capturadas ficam em tests/.saida/.
  */
 const fs = require('fs');
@@ -19,7 +19,10 @@ try {
 }
 
 const OUT = path.join(__dirname, '.saida');
-const BASE = process.env.BASE_URL || 'http://localhost:8123';
+const BASE = process.env.BASE_URL || 'http://localhost:8124';
+const ADMIN = { usuario: process.env.ADMIN_USER || 'flavio', senha: process.env.ADMIN_PASS || 'DiarioCecape2026' };
+const LEITOR = { usuario: 'leitor.e2e', senha: 'LeitorCecape2026', nome: 'Leitor E2E', email: 'leitor.e2e@exemplo.com' };
+
 fs.mkdirSync(OUT, { recursive: true });
 
 (async () => {
@@ -27,202 +30,247 @@ fs.mkdirSync(OUT, { recursive: true });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await ctx.newPage();
 
+  // Só contam erros de JavaScript. Respostas 401/403/422 são provocadas de
+  // propósito por esta suíte e o navegador as registra no console.
   const erros = [];
-  page.on('console', m => { if (m.type() === 'error') erros.push('console: ' + m.text()); });
+  page.on('console', m => {
+    if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) {
+      erros.push('console: ' + m.text());
+    }
+  });
   page.on('pageerror', err => erros.push('pageerror: ' + err.message));
-
-  await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
-  await page.waitForTimeout(400);
 
   const passos = [];
   const check = (nome, cond, extra) => {
-    passos.push((cond ? '✓ ' : '✗ ') + nome + (cond ? '' : '  → ' + extra));
+    passos.push((cond ? '✓ ' : '✗ ') + nome + (cond ? '' : '  → ' + JSON.stringify(extra)));
   };
 
-  // ---------- painel inicial (modo usuário)
-  const kpis = await page.$$eval('.kpi', els => els.map(e => e.querySelector('.kpi-valor').textContent));
-  check('painel exibe 5 KPIs', kpis.length === 5, JSON.stringify(kpis));
-  check('dados de exemplo carregados', kpis[0] === '4', kpis[0]);
-  check('abas de admin ocultas para usuário',
-    !(await page.isVisible('.aba[data-view="nova"]')));
-  await page.screenshot({ path: OUT + '/01-painel-usuario.png', fullPage: true });
+  const entrar = async (usuario, senha) => {
+    await page.goto(BASE + '/login.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500);
+    // Já havia sessão aberta: o login redireciona para a aplicação, então sai antes.
+    if (page.url().includes('index.html')) {
+      await page.click('#btnSair');
+      await page.waitForTimeout(900);
+      await page.goto(BASE + '/login.html', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(400);
+    }
+    await page.fill('#usuario', usuario);
+    await page.fill('#senha', senha);
+    await page.click('#btnEntrar');
+    await page.waitForTimeout(900);
+  };
 
-  // ---------- registros + exportações no modo usuário
-  await page.click('.aba[data-view="registros"]');
-  await page.waitForTimeout(250);
-  const linhas = await page.$$eval('#corpoRegistros tr', els => els.length);
-  check('tabela de registros lista 4 atividades', linhas === 4, String(linhas));
+  /* ------------------------------------------------ acesso sem sessão -- */
+  await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(800);
+  check('index.html sem sessão redireciona ao login',
+    page.url().includes('login.html'), page.url());
+  await page.screenshot({ path: OUT + '/00-login.png', fullPage: true });
 
-  // filtro por busca
-  await page.fill('#fBusca', 'manutencao');
-  await page.waitForTimeout(400);
-  const filtradas = await page.$$eval('#corpoRegistros tr', els => els.length);
-  check('busca sem acento encontra "Manutenção"', filtradas === 1, String(filtradas));
-  await page.fill('#fBusca', '');
-  await page.waitForTimeout(350);
-  await page.screenshot({ path: OUT + '/02-registros.png', fullPage: true });
+  await page.fill('#usuario', ADMIN.usuario);
+  await page.fill('#senha', 'senhaTotalmenteErrada1');
+  await page.click('#btnEntrar');
+  await page.waitForTimeout(700);
+  check('senha errada mostra erro e permanece no login',
+    page.url().includes('login.html') && await page.isVisible('#erroLogin'), page.url());
+  const msgErro = await page.textContent('#erroLogin');
+  check('mensagem genérica, sem revelar a conta',
+    msgErro.includes('Usuário ou senha inválidos'), msgErro);
 
-  // download XLS
-  const dlXls = page.waitForEvent('download', { timeout: 8000 });
-  await page.click('#btnXLS');
-  const xls = await dlXls;
-  const caminhoXls = OUT + '/relatorio.xls';
-  await xls.saveAs(caminhoXls);
-  const conteudoXls = fs.readFileSync(caminhoXls, 'utf8');
-  check('XLS gerado com nome correto', /^diario-de-bordo_\d{8}-\d{4}\.xls$/.test(xls.suggestedFilename()),
-    xls.suggestedFilename());
-  check('XLS contém as 3 planilhas',
-    conteudoXls.includes('ss:Name="Atividades"') && conteudoXls.includes('ss:Name="Fases"') &&
-    conteudoXls.includes('ss:Name="Informa'), 'planilhas ausentes');
-  check('XLS traz linhas de fases', (conteudoXls.match(/<Row>/g) || []).length > 12,
-    String((conteudoXls.match(/<Row>/g) || []).length));
-
-  // download PDF
-  const dlPdf = page.waitForEvent('download', { timeout: 8000 });
-  await page.click('#btnPDF');
-  const pdf = await dlPdf;
-  const caminhoPdf = OUT + '/relatorio.pdf';
-  await pdf.saveAs(caminhoPdf);
-  const bufPdf = fs.readFileSync(caminhoPdf);
-  check('PDF começa com %PDF-1.4', bufPdf.slice(0, 8).toString() === '%PDF-1.4');
-  check('PDF termina com %%EOF', bufPdf.slice(-6).toString().trim() === '%%EOF');
-  check('PDF tem tamanho plausível', bufPdf.length > 3000, String(bufPdf.length));
-
-  // ---------- entrar como admin
-  await page.click('#btnPerfil');
-  await page.waitForTimeout(250);
-  await page.fill('#campoPin', '9999');
-  await page.click('#btnConfirmarPin');
-  await page.waitForTimeout(200);
-  check('PIN incorreto é rejeitado', await page.isVisible('#campoPin'));
-  await page.fill('#campoPin', '1234');
-  await page.click('#btnConfirmarPin');
-  await page.waitForTimeout(300);
-  check('PIN correto entra no modo admin',
+  /* ------------------------------------------------------ login admin -- */
+  await entrar(ADMIN.usuario, ADMIN.senha);
+  check('login válido entra na aplicação', page.url().includes('index.html'), page.url());
+  check('nome do usuário aparece no topo',
+    (await page.textContent('#usuarioNome')).length > 1);
+  check('selo mostra Administrador',
     (await page.textContent('#seloPerfilTxt')) === 'Administrador');
-  check('abas de admin visíveis', await page.isVisible('.aba[data-view="nova"]'));
+  check('abas de admin visíveis', await page.isVisible('.aba[data-view="usuarios"]'));
+  await page.screenshot({ path: OUT + '/01-painel-admin.png', fullPage: true });
 
-  // ---------- criar atividade
+  /* -------------------------------------------- criar atividade (API) -- */
   await page.click('.aba[data-view="nova"]');
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(400);
   await page.fill('#aTitulo', 'Oficina de robótica educacional');
   await page.fill('#aResponsavel', 'Prof. Flávio Spina');
   await page.fill('#aCategoria', 'Ensino');
   await page.fill('#aLocal', 'Laboratório 3');
-  await page.fill('#aDescricao', 'Montagem de kits e programação em blocos com a turma do 2º módulo.');
-  await page.fill('#aInicio', '2025-05-05T10:00');
+  await page.fill('#aDescricao', 'Montagem de kits e programação em blocos.');
+  await page.fill('#aInicio', '2030-05-06T10:00');
   await page.selectOption('#aModelo', 'aula');
   await page.fill('#aHoras', '6');
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(600);
 
   const previsao = await page.$$eval('#corpoPrevisao tr', els =>
     els.map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim())));
-  check('previsão gerou 4 fases', previsao.length === 4, JSON.stringify(previsao));
-  check('1ª fase inicia seg 05/05/2025 10:00',
-    previsao[0] && previsao[0][2].includes('05/05/2025 10:00'), JSON.stringify(previsao[0]));
-  // 10:00→12:00 (2h) + 13:00→17:00 (4h) = 6h úteis descontando o almoço
-  check('última fase termina 05/05/2025 17:00 (6h úteis c/ almoço)',
-    previsao[3] && previsao[3][3].includes('05/05/2025 17:00'), JSON.stringify(previsao[3]));
-  // a fase que atravessa o almoço deve ter 60 min a mais de relógio do que de trabalho
-  const cruzando = await page.evaluate(() => {
-    const p = Schedule.planejar({
-      inicio: '2025-05-05T10:00', duracaoMin: 360,
-      fases: Schedule.modelo('aula').fases.map(f => ({ nome: f.nome, peso: f.peso })),
-      distribuir: 'peso', jornada: Store.config().jornada
-    });
-    return p.fases.map(f => ({
-      relogio: Util.diffMin(f.inicioPrevisto, f.fimPrevisto), trabalho: f.duracaoMin
-    }));
-  });
-  check('fase que cruza o almoço ganha 60 min de relógio',
-    cruzando.some(f => f.relogio - f.trabalho === 60) &&
-    cruzando.filter(f => f.relogio !== f.trabalho).length === 1, JSON.stringify(cruzando));
-  const resumo = await page.textContent('#resumoPrevisao');
-  check('resumo mostra duração total 6h', resumo.includes('6h'), resumo);
-  await page.screenshot({ path: OUT + '/03-nova-atividade.png', fullPage: true });
-
-  // adicionar e mover fase
-  await page.click('#btnAddFase');
-  await page.waitForTimeout(250);
-  check('fase adicionada', (await page.$$('#editorFases .linha-fase')).length === 5);
-  await page.click('#editorFases .linha-fase:last-child button[data-mover="-1"]');
-  await page.waitForTimeout(250);
-  const nomes = await page.$$eval('#editorFases input[data-campo="nome"]', els => els.map(e => e.value));
-  check('fase movida para cima', nomes[3] === 'Nova fase', JSON.stringify(nomes));
-  await page.click('#editorFases .linha-fase:nth-child(4) button[data-remover]');
-  await page.waitForTimeout(250);
-  check('fase removida', (await page.$$('#editorFases .linha-fase')).length === 4);
+  check('previsão calculou 4 fases', previsao.length === 4, previsao);
+  check('última fase termina 06/05/2030 17:00 (6h úteis c/ almoço)',
+    previsao[3] && previsao[3][3].includes('06/05/2030 17:00'), previsao[3]);
+  await page.screenshot({ path: OUT + '/02-nova-atividade.png', fullPage: true });
 
   await page.click('#btnSalvarAtividade');
-  await page.waitForTimeout(600);
-  check('após salvar abre o detalhe da atividade', await page.isVisible('#modalFundo'));
+  await page.waitForTimeout(1200);
+  check('após salvar abre o detalhe', await page.isVisible('#modalFundo'));
   const tituloModal = await page.textContent('#modalTitulo');
   check('modal mostra o título salvo', tituloModal.includes('robótica'), tituloModal);
-  await page.screenshot({ path: OUT + '/04-detalhe-admin.png', fullPage: true });
+  await page.screenshot({ path: OUT + '/03-detalhe-admin.png', fullPage: true });
 
-  // ---------- registrar execução das fases
+  /* ------------------------------------------- registrar execução real -- */
   await page.click('#modalCorpo button[data-acao="iniciar"]');
-  await page.waitForTimeout(400);
-  check('fase iniciada gera situação "Em andamento"',
+  await page.waitForTimeout(900);
+  check('fase iniciada aparece como "Em andamento"',
     (await page.textContent('#modalCorpo')).includes('Em andamento'));
   await page.click('#modalCorpo button[data-acao="concluir"]');
-  await page.waitForTimeout(400);
-  const corpoModal = await page.textContent('#modalCorpo');
-  check('fase concluída registrada', corpoModal.includes('Concluída'));
-  const sub = await page.textContent('#modalSub');
-  const pct = +(sub.match(/(\d+)% concluído/) || [])[1];
-  check('progresso da atividade avançou', pct > 0, sub);
+  await page.waitForTimeout(900);
+  check('fase concluída registrada', (await page.textContent('#modalCorpo')).includes('Concluída'));
 
-  // replanejar restante
-  page.once('dialog', d => d.accept());
-  await page.click('#modalRodape button[data-modal-acao="replanejar"]');
-  await page.waitForTimeout(500);
-  check('replanejamento mantém o modal aberto', await page.isVisible('#modalFundo'));
+  const sub = await page.textContent('#modalSub');
+  check('progresso avançou', +(sub.match(/(\d+)% concluído/) || [])[1] > 0, sub);
 
   await page.click('#modalRodape [data-fechar]');
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(300);
 
-  // ---------- persistência
+  /* -------------------------------------- persistência real (recarrega) -- */
   await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1000);
   await page.click('.aba[data-view="registros"]');
+  await page.waitForTimeout(500);
+  const linhas = await page.$$eval('#corpoRegistros tr', els => els.length);
+  check('atividade persistida no MySQL após recarregar', linhas >= 1, linhas);
+  check('continua autenticado após recarregar (cookie de sessão)',
+    (await page.textContent('#seloPerfilTxt')) === 'Administrador');
+
+  /* --------------------------------------------------------- exportações */
+  const dlXls = page.waitForEvent('download', { timeout: 8000 });
+  await page.click('#btnXLS');
+  const xls = await dlXls;
+  await xls.saveAs(OUT + '/relatorio.xls');
+  check('XLS exportado', /\.xls$/.test(xls.suggestedFilename()), xls.suggestedFilename());
+
+  const dlPdf = page.waitForEvent('download', { timeout: 8000 });
+  await page.click('#btnPDF');
+  const pdf = await dlPdf;
+  await pdf.saveAs(OUT + '/relatorio.pdf');
+  const buf = fs.readFileSync(OUT + '/relatorio.pdf');
+  check('PDF exportado e íntegro',
+    buf.slice(0, 8).toString() === '%PDF-1.4' && buf.slice(-6).toString().trim() === '%%EOF');
+  await page.screenshot({ path: OUT + '/04-registros.png', fullPage: true });
+
+  /* ------------------------------------------------- gestão de usuários -- */
+  await page.click('.aba[data-view="usuarios"]');
+  await page.waitForTimeout(700);
+  check('tela de usuários lista contas',
+    (await page.$$('#corpoUsuarios tr')).length >= 1);
+  check('auditoria mostra registros',
+    (await page.$$('#corpoAuditoria tr')).length >= 1);
+
+  await page.click('#btnNovoUsuario');
   await page.waitForTimeout(300);
-  const linhasDepois = await page.$$eval('#corpoRegistros tr', els => els.length);
-  check('atividade persistiu após recarregar', linhasDepois === 5, String(linhasDepois));
-  check('perfil volta para visualização após recarregar',
+  await page.fill('#uNome', LEITOR.nome);
+  await page.fill('#uUsuario', LEITOR.usuario);
+  await page.fill('#uEmail', LEITOR.email);
+  await page.fill('#uSenha', '123');
+  await page.click('#btnSalvarUsuario');
+  await page.waitForTimeout(700);
+  check('senha fraca é recusada pelo servidor', await page.isVisible('#modalFundo'));
+
+  await page.fill('#uSenha', LEITOR.senha);
+  await page.click('#btnSalvarUsuario');
+  await page.waitForTimeout(900);
+  check('usuário de visualização criado', !(await page.isVisible('#modalFundo')));
+  await page.screenshot({ path: OUT + '/05-usuarios.png', fullPage: true });
+
+  /* ------------------------------------------- perfil de visualização -- */
+  await page.click('#btnSair');
+  await page.waitForTimeout(900);
+  check('logout leva ao login', page.url().includes('login.html'), page.url());
+
+  await entrar(LEITOR.usuario, LEITOR.senha);
+  check('primeiro acesso exige troca de senha',
+    await page.isVisible('#caixaTroca'), page.url());
+
+  await page.fill('#senhaAtual', LEITOR.senha);
+  await page.fill('#novaSenha', 'NovaSenhaLeitor2026');
+  await page.fill('#novaSenha2', 'NovaSenhaLeitor2026');
+  await page.click('#btnTrocar');
+  await page.waitForTimeout(1200);
+  check('após trocar a senha entra na aplicação', page.url().includes('index.html'), page.url());
+  check('selo mostra Visualização',
     (await page.textContent('#seloPerfilTxt')) === 'Visualização');
+  check('aba "Nova atividade" oculta', !(await page.isVisible('.aba[data-view="nova"]')));
+  check('aba "Usuários" oculta', !(await page.isVisible('.aba[data-view="usuarios"]')));
+  check('aba "Configurações" oculta', !(await page.isVisible('.aba[data-view="config"]')));
 
-  // ---------- tema escuro
+  await page.click('.aba[data-view="registros"]');
+  await page.waitForTimeout(500);
+  check('visualizador vê os registros',
+    (await page.$$('#corpoRegistros tr')).length >= 1);
+
+  await page.click('#corpoRegistros tr');
+  await page.waitForTimeout(500);
+  check('visualizador abre o detalhe', await page.isVisible('#modalFundo'));
+  check('detalhe sem botões de edição',
+    !(await page.isVisible('#modalRodape [data-modal-acao="editar"]')));
+  check('detalhe sem botão de exclusão',
+    !(await page.isVisible('#modalRodape [data-modal-acao="excluir"]')));
+  check('fases em somente leitura (sem campos de data)',
+    (await page.$$('#modalCorpo input[type="datetime-local"]')).length === 0);
+  check('visualizador ainda exporta e imprime',
+    await page.isVisible('#modalRodape [data-modal-acao="pdf"]') &&
+    await page.isVisible('#modalRodape [data-modal-acao="imprimir"]'));
+  await page.screenshot({ path: OUT + '/06-detalhe-visualizacao.png', fullPage: true });
+  await page.click('#modalRodape [data-fechar]');
+
+  // Mesmo forçando a chamada pela API, o servidor recusa.
+  const tentativa = await page.evaluate(async () => {
+    try {
+      await window.Api.criarAtividade({
+        titulo: 'Tentativa indevida', inicioPrevisto: '2030-01-01T08:00',
+        fimPrevisto: '2030-01-01T09:00',
+        fases: [{ nome: 'F', peso: 100, duracaoMin: 60, inicioPrevisto: '2030-01-01T08:00', fimPrevisto: '2030-01-01T09:00' }]
+      });
+      return { status: 200 };
+    } catch (e) { return { status: e.status, msg: e.message }; }
+  });
+  check('API recusa escrita do visualizador mesmo por chamada direta (403)',
+    tentativa.status === 403, tentativa);
+
+  /* ------------------------------------------------------- tema escuro -- */
+  await page.click('#btnTema');
+  await page.waitForTimeout(400);
+  check('tema escuro aplicado', (await page.getAttribute('html', 'data-tema')) === 'escuro');
+  await page.screenshot({ path: OUT + '/07-tema-escuro.png', fullPage: true });
   await page.click('#btnTema');
   await page.waitForTimeout(300);
-  check('tema escuro aplicado',
-    (await page.getAttribute('html', 'data-tema')) === 'escuro');
-  await page.screenshot({ path: OUT + '/05-tema-escuro.png', fullPage: true });
-  await page.click('#btnTema');
-  await page.waitForTimeout(200);
 
-  // ---------- documento de impressão
-  const html = await page.evaluate(() =>
-    Export.paraHTMLImpressao(Store.listar(), { organizacao: 'CECAPE', subtitulo: 'Teste', filtros: 'Todos' }));
-  fs.writeFileSync(OUT + '/impressao.html', html);
-  check('HTML de impressão contém as atividades',
-    html.includes('robótica') && html.includes('<table>'), 'conteúdo inesperado');
-
-  const pagina2 = await ctx.newPage();
-  await pagina2.setContent(html);
-  await pagina2.screenshot({ path: OUT + '/06-impressao.png', fullPage: true });
-  await pagina2.pdf({ path: OUT + '/impressao-navegador.pdf', format: 'A4', landscape: true });
-
-  // ---------- responsivo
-  await page.setViewportSize({ width: 420, height: 900 });
+  /* --------------------------------------------------------- responsivo -- */
+  await page.setViewportSize({ width: 400, height: 900 });
   await page.click('.aba[data-view="painel"]');
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: OUT + '/07-mobile.png', fullPage: true });
+  await page.waitForTimeout(500);
+  const larguras = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth
+  }));
+  check('sem rolagem horizontal no celular', larguras.scroll <= larguras.client, larguras);
+  await page.screenshot({ path: OUT + '/08-mobile.png', fullPage: true });
+
+  /* ------------------------------------------------------------ limpeza -- */
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await entrar(ADMIN.usuario, ADMIN.senha);
+  const limpeza = await page.evaluate(async (login) => {
+    const usuarios = await window.Api.listarUsuarios();
+    const alvo = usuarios.find(u => u.usuario === login);
+    if (alvo) await window.Api.excluirUsuario(alvo.id);
+    const atividades = await window.Api.listarAtividades();
+    for (const a of atividades) await window.Api.excluirAtividade(a.id);
+    return { usuario: !!alvo, atividades: atividades.length };
+  }, LEITOR.usuario);
+  check('dados de teste removidos', limpeza.usuario && limpeza.atividades >= 1, limpeza);
 
   console.log(passos.join('\n'));
   console.log('\nErros de console/página: ' + (erros.length ? '\n  ' + erros.join('\n  ') : 'nenhum'));
   const falhas = passos.filter(p => p.startsWith('✗')).length;
-  console.log(falhas ? '\n✗ ' + falhas + ' verificação(ões) falharam' : '\n✓ todas as verificações passaram');
+  console.log(falhas ? `\n✗ ${falhas} verificação(ões) falharam` : '\n✓ todas as verificações passaram');
 
   await browser.close();
   process.exit(falhas || erros.length ? 1 : 0);

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar — Diário de Bordo CECAPE</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231f3a5f'/><path d='M28 30h44M28 50h44M28 70h28' stroke='white' stroke-width='9' stroke-linecap='round'/></svg>">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body class="tela-acesso">
+
+<main class="acesso">
+  <div class="acesso-caixa">
+    <div class="acesso-marca">
+      <div class="marca-icone" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/>
+          <path d="M9 8h7M9 12h7"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Diário de Bordo</h1>
+        <p>Registro de atividades — CECAPE</p>
+      </div>
+    </div>
+
+    <form id="formLogin" autocomplete="on" novalidate>
+      <label class="campo">
+        <span>Usuário ou e-mail</span>
+        <input type="text" id="usuario" name="username" autocomplete="username"
+               required maxlength="160" autofocus>
+      </label>
+
+      <label class="campo">
+        <span>Senha</span>
+        <input type="password" id="senha" name="password" autocomplete="current-password"
+               required maxlength="200">
+      </label>
+
+      <p class="acesso-erro oculto" id="erroLogin" role="alert"></p>
+
+      <button type="submit" class="btn btn-primario btn-bloco" id="btnEntrar">Entrar</button>
+    </form>
+
+    <p class="acesso-nota">
+      Acesso restrito. As tentativas de entrada são registradas.<br>
+      Esqueceu a senha? Peça a redefinição a um administrador.
+    </p>
+  </div>
+
+  <!-- troca obrigatória de senha no primeiro acesso -->
+  <div class="acesso-caixa oculto" id="caixaTroca">
+    <div class="acesso-marca">
+      <div class="marca-icone" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Defina sua senha</h1>
+        <p>É seu primeiro acesso com esta senha</p>
+      </div>
+    </div>
+
+    <form id="formTroca" autocomplete="off" novalidate>
+      <label class="campo">
+        <span>Senha atual</span>
+        <input type="password" id="senhaAtual" autocomplete="current-password" required maxlength="200">
+      </label>
+      <label class="campo">
+        <span>Nova senha</span>
+        <input type="password" id="novaSenha" autocomplete="new-password" required maxlength="200">
+      </label>
+      <label class="campo">
+        <span>Repetir a nova senha</span>
+        <input type="password" id="novaSenha2" autocomplete="new-password" required maxlength="200">
+      </label>
+
+      <p class="nota">Mínimo de 10 caracteres, com letras e números. Não pode conter
+        seu nome de usuário, e-mail ou nome.</p>
+
+      <p class="acesso-erro oculto" id="erroTroca" role="alert"></p>
+
+      <button type="submit" class="btn btn-primario btn-bloco" id="btnTrocar">Salvar e entrar</button>
+    </form>
+  </div>
+</main>
+
+<script src="assets/js/api.js"></script>
+<script src="assets/js/login.js"></script>
+</body>
+</html>

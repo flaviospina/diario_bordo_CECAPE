@@ -8,17 +8,21 @@
   var S = global.Schedule;
   var St = global.Store;
   var Ex = global.Export;
+  var Api = global.Api;
   var $ = U.$, $$ = U.$$;
   var e = U.escapeHtml;
 
   var app = {
-    perfil: 'usuario',      // 'usuario' | 'admin'
     view: 'painel',
     editandoId: null,       // atividade em edição no formulário
     fases: [],              // fases em edição no formulário
     modalId: null,          // atividade aberta no modal
-    modoModal: null         // 'detalhe' | 'pin' | 'importar'
+    modoModal: null,        // 'detalhe' | 'senha' | 'usuario'
+    usuarios: []            // cache da tela de usuários
   };
+
+  /** O perfil vem sempre do servidor — a interface só reflete o que ele diz. */
+  function ehAdmin() { return St.ehAdmin(); }
 
   /* ====================================================== notificações == */
 
@@ -70,58 +74,81 @@
 
   function agora() { return U.toInput(new Date()); }
 
-  /* =============================================================== perfil */
+  /* ============================================================== sessão */
 
-  function aplicarPerfil() {
-    var admin = app.perfil === 'admin';
+  function aplicarSessao() {
+    var usuario = St.usuario();
+    var admin = ehAdmin();
+
     document.body.classList.toggle('modo-admin', admin);
     $('#seloPerfil').classList.toggle('admin', admin);
     $('#seloPerfilTxt').textContent = admin ? 'Administrador' : 'Visualização';
-    $('#btnPerfil').textContent = admin ? 'Sair do modo admin' : 'Entrar como admin';
-    if (!admin && (app.view === 'nova' || app.view === 'config')) irPara('painel');
+    $('#usuarioNome').textContent = usuario ? usuario.nome : '—';
+    $('#usuarioAtual').title = usuario ? (usuario.nome + ' (' + usuario.usuario + ')') : '';
+
+    if (!admin && ['nova', 'config', 'usuarios'].indexOf(app.view) !== -1) irPara('painel');
     if (app.modalId) abrirDetalhe(app.modalId); // redesenha com as permissões corretas
   }
 
-  function alternarPerfil() {
-    if (app.perfil === 'admin') {
-      app.perfil = 'usuario';
-      aplicarPerfil();
-      avisar('Modo visualização ativado.');
-      return;
-    }
-    pedirPin();
+  function irParaLogin() {
+    window.location.replace('login.html');
   }
 
-  function pedirPin() {
+  function sair() {
+    Api.logout().catch(function () { /* mesmo com falha, sai da tela */ })
+      .then(irParaLogin);
+  }
+
+  /** Trata a falha de uma chamada à API de forma consistente. */
+  function tratarFalha(e) {
+    if (e && e.status === 401) {
+      avisar('Sessão expirada. Entre novamente.', 'erro');
+      setTimeout(irParaLogin, 1200);
+      return;
+    }
+    if (e && e.status === 403) {
+      avisar('Você não tem permissão para esta ação.', 'erro');
+      return;
+    }
+    avisar((e && e.message) || 'Falha inesperada.', 'erro');
+  }
+
+  function abrirTrocaSenha() {
     abrirModal({
-      titulo: 'Acesso administrativo',
-      sub: 'Informe o PIN para registrar e editar atividades.',
-      corpo: '<form id="formPin"><label class="campo">' +
-        '<span>PIN</span><input type="password" id="campoPin" inputmode="numeric" ' +
-        'maxlength="12" autofocus placeholder="••••"></label>' +
-        '<p class="nota">PIN inicial: <b>1234</b> — altere em Configurações depois de entrar.</p></form>',
+      titulo: 'Alterar minha senha',
+      sub: 'Mínimo de 10 caracteres, com letras e números.',
+      corpo: '<form id="formSenha" autocomplete="off">' +
+        '<div class="form-grade">' +
+        '<label class="campo col-2"><span>Senha atual</span>' +
+        '<input type="password" id="sAtual" autocomplete="current-password" maxlength="200"></label>' +
+        '<label class="campo"><span>Nova senha</span>' +
+        '<input type="password" id="sNova" autocomplete="new-password" maxlength="200"></label>' +
+        '<label class="campo"><span>Repetir nova senha</span>' +
+        '<input type="password" id="sNova2" autocomplete="new-password" maxlength="200"></label>' +
+        '</div><p class="nota">A senha não pode conter seu nome de usuário, e-mail ou nome.</p></form>',
       rodape: '<button class="btn btn-fantasma" data-fechar>Cancelar</button>' +
-        '<button class="btn btn-primario" id="btnConfirmarPin">Entrar</button>',
-      modo: 'pin'
+        '<button class="btn btn-primario" id="btnConfirmarSenha">Alterar senha</button>',
+      modo: 'senha'
     });
 
     function confirmar(ev) {
       if (ev) ev.preventDefault();
-      var valor = $('#campoPin').value;
-      if (U.hash(valor) === St.config().pinHash) {
-        app.perfil = 'admin';
-        fecharModal();
-        aplicarPerfil();
-        avisar('Modo administrador ativado.', 'ok');
-      } else {
-        avisar('PIN incorreto.', 'erro');
-        $('#campoPin').value = '';
-        $('#campoPin').focus();
+      var nova = $('#sNova').value;
+      if (nova !== $('#sNova2').value) {
+        avisar('A confirmação não confere com a nova senha.', 'erro');
+        return;
       }
+      var botao = $('#btnConfirmarSenha');
+      botao.disabled = true;
+      Api.trocarSenha($('#sAtual').value, nova).then(function () {
+        fecharModal();
+        avisar('Senha alterada.', 'ok');
+      }).catch(tratarFalha).finally(function () { botao.disabled = false; });
     }
-    $('#formPin').addEventListener('submit', confirmar);
-    $('#btnConfirmarPin').addEventListener('click', confirmar);
-    setTimeout(function () { var c = $('#campoPin'); if (c) c.focus(); }, 60);
+
+    $('#formSenha').addEventListener('submit', confirmar);
+    $('#btnConfirmarSenha').addEventListener('click', confirmar);
+    setTimeout(function () { var c = $('#sAtual'); if (c) c.focus(); }, 60);
   }
 
   /* ============================================================ navegação */
@@ -134,6 +161,7 @@
     if (view === 'painel') renderPainel();
     if (view === 'registros') renderRegistros();
     if (view === 'config') carregarConfigNaTela();
+    if (view === 'usuarios') { carregarUsuarios(); carregarAuditoria(); }
   }
 
   /* ================================================================ modal */
@@ -301,7 +329,7 @@
     var a = St.obter(id);
     if (!a) return;
     app.modalId = id;
-    var admin = app.perfil === 'admin';
+    var admin = ehAdmin();
     var st = St.statusAtividade(a);
     var desvio = St.desvio(a);
 
@@ -399,6 +427,28 @@
     app.modalId = id;
   }
 
+  /** Cópia da atividade para editar sem sujar o cache antes de o servidor aceitar. */
+  function rascunho(a) {
+    return JSON.parse(JSON.stringify(a));
+  }
+
+  /** Grava a atividade no servidor e redesenha as telas. */
+  function gravar(id, dados, mensagem) {
+    return St.atualizar(id, dados).then(function (atv) {
+      if (app.modalId === id) abrirDetalhe(id);
+      atualizarTudo();
+      if (mensagem) avisar(mensagem, 'ok');
+      return atv;
+    }).catch(function (e) {
+      tratarFalha(e);
+      // Recarrega do servidor para descartar qualquer divergência local.
+      return St.recarregar().then(function () {
+        if (app.modalId === id) abrirDetalhe(id);
+        atualizarTudo();
+      });
+    });
+  }
+
   /** Ações dentro do modal de detalhe (delegação de eventos). */
   function tratarAcaoModal(ev) {
     var alvo = ev.target.closest('[data-acao], [data-modal-acao], [data-fechar]');
@@ -410,8 +460,11 @@
 
     var acaoFase = alvo.getAttribute('data-acao');
     if (acaoFase) {
-      var fase = (a.fases || []).filter(function (f) { return f.id === alvo.dataset.fase; })[0];
+      if (!ehAdmin()) return;
+      var copia = rascunho(a);
+      var fase = (copia.fases || []).filter(function (f) { return f.id === alvo.dataset.fase; })[0];
       if (!fase) return;
+
       if (acaoFase === 'iniciar') {
         fase.inicioReal = agora();
       } else if (acaoFase === 'concluir') {
@@ -420,11 +473,8 @@
       } else if (acaoFase === 'limpar') {
         fase.inicioReal = ''; fase.fimReal = '';
       }
-      St.sincronizarTotais(a);
-      St.atualizar(a.id, a);
-      abrirDetalhe(a.id);
-      atualizarTudo();
-      avisar('Registro atualizado.', 'ok');
+      St.sincronizarTotais(copia);
+      gravar(a.id, copia, 'Registro atualizado.');
       return;
     }
 
@@ -433,7 +483,9 @@
     if (acao === 'imprimir') { Ex.imprimir([a], meta); return; }
     if (acao === 'pdf') { Ex.paraPDF([a], meta); avisar('PDF gerado.', 'ok'); return; }
 
-    if (app.perfil !== 'admin') return;
+    // A interface esconde os botões; esta é a segunda barreira — a definitiva
+    // está no servidor, que recusa a requisição de quem não é admin.
+    if (!ehAdmin()) return;
 
     if (acao === 'editar') {
       fecharModal();
@@ -442,26 +494,24 @@
       return;
     }
     if (acao === 'duplicar') {
-      var copia = JSON.parse(JSON.stringify(a));
-      delete copia.id;
-      copia.titulo = a.titulo + ' (cópia)';
-      copia.inicioReal = ''; copia.fimReal = ''; copia.cancelada = false;
-      copia.fases = (copia.fases || []).map(function (f) {
-        return Object.assign({}, f, { id: U.uid('fase'), inicioReal: '', fimReal: '' });
+      var nova = rascunho(a);
+      delete nova.id;
+      nova.titulo = a.titulo + ' (cópia)';
+      nova.inicioReal = ''; nova.fimReal = ''; nova.cancelada = false;
+      nova.fases = (nova.fases || []).map(function (f) {
+        return Object.assign({}, f, { inicioReal: '', fimReal: '' });
       });
-      var nova = St.criar(copia);
-      fecharModal();
-      atualizarTudo();
-      avisar('Atividade duplicada.', 'ok');
-      abrirDetalhe(nova.id);
+      St.criar(nova).then(function (criada) {
+        atualizarTudo();
+        avisar('Atividade duplicada.', 'ok');
+        abrirDetalhe(criada.id);
+      }).catch(tratarFalha);
       return;
     }
     if (acao === 'cancelar') {
-      a.cancelada = !a.cancelada;
-      St.atualizar(a.id, a);
-      abrirDetalhe(a.id);
-      atualizarTudo();
-      avisar(a.cancelada ? 'Atividade cancelada.' : 'Atividade reativada.', 'ok');
+      var alterada = rascunho(a);
+      alterada.cancelada = !a.cancelada;
+      gravar(a.id, alterada, alterada.cancelada ? 'Atividade cancelada.' : 'Atividade reativada.');
       return;
     }
     if (acao === 'replanejar') {
@@ -470,24 +520,25 @@
     }
     if (acao === 'excluir') {
       if (!confirm('Excluir definitivamente a atividade "' + a.titulo + '"?')) return;
-      St.remover(a.id);
-      fecharModal();
-      atualizarTudo();
-      avisar('Atividade excluída.');
+      St.remover(a.id).then(function () {
+        fecharModal();
+        atualizarTudo();
+        avisar('Atividade excluída.');
+      }).catch(tratarFalha);
     }
   }
 
   /** Recalcula a previsão das fases ainda não concluídas, a partir de agora. */
   function replanejar(a) {
-    var fases = a.fases || [];
-    var pendentes = fases.filter(function (f) { return !f.fimReal; });
+    var copia = rascunho(a);
+    var pendentes = (copia.fases || []).filter(function (f) { return !f.fimReal; });
     if (!pendentes.length) { avisar('Todas as fases já foram concluídas.'); return; }
     if (!confirm('Recalcular o início e o término previstos das ' + pendentes.length +
       ' fase(s) ainda não concluídas, a partir de agora?')) return;
 
     var jornada = St.config().jornada;
     var cursor = new Date();
-    fases.forEach(function (f) {
+    copia.fases.forEach(function (f) {
       if (f.fimReal) return;
       var ini = f.inicioReal ? U.parseLocal(f.inicioReal) : S.proximoInstanteUtil(cursor, jornada);
       var fim = S.somarMinutosUteis(ini, Math.max(1, +f.duracaoMin || 1), jornada);
@@ -495,34 +546,31 @@
       f.fimPrevisto = U.toInput(fim);
       cursor = fim;
     });
-    St.sincronizarTotais(a);
-    St.atualizar(a.id, a);
-    abrirDetalhe(a.id);
-    atualizarTudo();
-    avisar('Previsão recalculada.', 'ok');
+    St.sincronizarTotais(copia);
+    gravar(a.id, copia, 'Previsão recalculada.');
   }
 
   /** Edição direta de início/término reais nos campos do modal. */
   function tratarEdicaoFase(ev) {
-    if (app.perfil !== 'admin') return;
+    if (!ehAdmin()) return;
     var campo = ev.target.getAttribute && ev.target.getAttribute('data-campo');
     if (!campo) return;
     var a = St.obter(app.modalId);
     if (!a) return;
-    var fase = (a.fases || []).filter(function (f) { return f.id === ev.target.dataset.fase; })[0];
+
+    var copia = rascunho(a);
+    var fase = (copia.fases || []).filter(function (f) { return f.id === ev.target.dataset.fase; })[0];
     if (!fase) return;
 
     fase[campo] = ev.target.value;
     if (fase.fimReal && fase.inicioReal &&
       U.parseLocal(fase.fimReal) < U.parseLocal(fase.inicioReal)) {
       avisar('O término não pode ser anterior ao início.', 'erro');
-      fase[campo] = '';
       ev.target.value = '';
       return;
     }
-    St.sincronizarTotais(a);
-    St.atualizar(a.id, a);
-    atualizarTudo();
+    St.sincronizarTotais(copia);
+    gravar(a.id, copia);
   }
 
   /* =========================================================== FORMULÁRIO */
@@ -698,7 +746,7 @@
 
   function salvarAtividade(ev) {
     ev.preventDefault();
-    if (app.perfil !== 'admin') { avisar('Apenas o administrador pode salvar.', 'erro'); return; }
+    if (!ehAdmin()) { avisar('Apenas administradores podem salvar.', 'erro'); return; }
 
     var titulo = $('#aTitulo').value.trim();
     if (!titulo) { avisar('Informe o título da atividade.', 'erro'); $('#aTitulo').focus(); return; }
@@ -726,24 +774,27 @@
       fimPrevisto: U.toInput(plano.fim)
     };
 
-    var atv;
-    if (app.editandoId) {
-      atv = St.obter(app.editandoId);
-      Object.assign(atv, dados);
-      St.sincronizarTotais(atv);
-      St.atualizar(atv.id, atv);
-      avisar('Atividade atualizada.', 'ok');
-    } else {
-      atv = St.criar(dados);
-      St.sincronizarTotais(atv);
-      St.atualizar(atv.id, atv);
-      avisar('Atividade registrada com a previsão das fases.', 'ok');
-    }
+    var editando = app.editandoId;
+    var base = editando ? Object.assign(rascunho(St.obter(editando) || {}), dados) : dados;
+    St.sincronizarTotais(base);
 
-    limparFormulario();
-    atualizarTudo();
-    irPara('registros');
-    setTimeout(function () { abrirDetalhe(atv.id); }, 220);
+    var botao = $('#btnSalvarAtividade');
+    var rotulo = botao.textContent;
+    botao.disabled = true;
+    botao.textContent = 'Salvando…';
+
+    var envio = editando ? St.atualizar(editando, base) : St.criar(base);
+
+    envio.then(function (atv) {
+      avisar(editando ? 'Atividade atualizada.' : 'Atividade registrada com a previsão das fases.', 'ok');
+      limparFormulario();
+      atualizarTudo();
+      irPara('registros');
+      setTimeout(function () { abrirDetalhe(atv.id); }, 220);
+    }).catch(tratarFalha).finally(function () {
+      botao.disabled = false;
+      botao.textContent = rotulo;
+    });
   }
 
   /* ======================================================== CONFIGURAÇÕES */
@@ -785,6 +836,9 @@
       }
     }
 
+    var botao = $('#btnSalvarConfig');
+    botao.disabled = true;
+
     St.salvarConfig({
       organizacao: $('#cOrganizacao').value.trim() || 'CECAPE',
       subtitulo: $('#cSubtitulo').value.trim() || 'Diário de Bordo — Registro de Atividades',
@@ -797,19 +851,11 @@
         pausaInicio: $('#jPausaInicio').value || '12:00',
         pausaFim: $('#jPausaFim').value || '13:00'
       }
-    });
-    aplicarIdentidade();
-    atualizarTudo();
-    avisar('Configurações salvas.', 'ok');
-  }
-
-  function salvarPin() {
-    var p1 = $('#cPin').value, p2 = $('#cPin2').value;
-    if (p1.length < 4) { avisar('O PIN deve ter ao menos 4 caracteres.', 'erro'); return; }
-    if (p1 !== p2) { avisar('Os PINs informados não coincidem.', 'erro'); return; }
-    St.salvarConfig({ pinHash: U.hash(p1) });
-    $('#cPin').value = ''; $('#cPin2').value = '';
-    avisar('PIN alterado.', 'ok');
+    }).then(function () {
+      aplicarIdentidade();
+      atualizarTudo();
+      avisar('Configurações salvas.', 'ok');
+    }).catch(tratarFalha).finally(function () { botao.disabled = false; });
   }
 
   function aplicarIdentidade() {
@@ -831,22 +877,203 @@
   }
 
   function importarBackup(arquivo) {
+    if (arquivo.size > 8 * 1024 * 1024) {
+      avisar('Arquivo grande demais (limite de 8 MB).', 'erro');
+      return;
+    }
+
     var leitor = new FileReader();
     leitor.onload = function () {
       var substituir = confirm(
         'OK = substituir todos os registros atuais pelo backup.\n' +
         'Cancelar = acrescentar os registros do backup aos existentes.');
+
+      avisar('Enviando o backup ao servidor…');
       try {
-        var n = St.importarJSON(leitor.result, substituir);
-        aplicarIdentidade();
-        carregarConfigNaTela();
-        atualizarTudo();
-        avisar(n + ' atividade(s) importada(s).', 'ok');
+        St.importarJSON(leitor.result, substituir).then(function (n) {
+          aplicarIdentidade();
+          carregarConfigNaTela();
+          atualizarTudo();
+          avisar(n + ' atividade(s) importada(s).', 'ok');
+        }).catch(tratarFalha);
       } catch (err) {
         avisar('Falha ao importar: ' + err.message, 'erro');
       }
     };
     leitor.readAsText(arquivo);
+  }
+
+  /* ============================================================ USUÁRIOS */
+
+  function carregarUsuarios() {
+    if (!ehAdmin()) return;
+    Api.listarUsuarios().then(function (lista) {
+      app.usuarios = lista;
+      $('#contadorUsuarios').textContent = lista.length;
+
+      $('#corpoUsuarios').innerHTML = lista.map(function (u) {
+        var eu = St.usuario() && St.usuario().id === u.id;
+        return '<tr data-id="' + e(u.id) + '">' +
+          '<td class="cel-titulo">' + e(u.nome) + (eu ? ' <span class="marca-eu">você</span>' : '') + '</td>' +
+          '<td class="td-nowrap">' + e(u.usuario) + '</td>' +
+          '<td class="td-nowrap">' + e(u.email) + '</td>' +
+          '<td>' + (u.perfil === 'admin'
+            ? '<span class="selo selo-info">Administrador</span>'
+            : '<span class="selo selo-neutro">Visualização</span>') + '</td>' +
+          '<td>' + (u.ativo
+            ? '<span class="selo selo-ok">Ativo</span>'
+            : '<span class="selo selo-off">Inativo</span>') +
+          (u.deveTrocarSenha ? ' <span class="selo selo-alerta">Trocar senha</span>' : '') + '</td>' +
+          '<td class="td-nowrap">' + e(u.ultimoAcesso ? U.fmtDataHora(u.ultimoAcesso.replace(' ', 'T')) : 'nunca') + '</td>' +
+          '<td class="col-acoes"><div class="grupo-btn">' +
+          '<button class="btn btn-fantasma btn-p" data-usuario-acao="editar">Editar</button>' +
+          '<button class="btn btn-fantasma btn-p" data-usuario-acao="senha">Redefinir senha</button>' +
+          (eu ? '' : '<button class="mini-btn remover" data-usuario-acao="excluir" title="Excluir">✕</button>') +
+          '</div></td>' +
+          '</tr>';
+      }).join('');
+    }).catch(tratarFalha);
+  }
+
+  function carregarAuditoria() {
+    if (!ehAdmin()) return;
+    Api.auditoria(80).then(function (registros) {
+      $('#corpoAuditoria').innerHTML = registros.length ? registros.map(function (r) {
+        return '<tr>' +
+          '<td class="td-nowrap">' + e(U.fmtDataHora((r.criado_em || '').replace(' ', 'T'))) + '</td>' +
+          '<td>' + e(r.usuario_nome || '—') + '</td>' +
+          '<td><code class="acao">' + e(r.acao) + '</code></td>' +
+          '<td class="td-nowrap">' + e([r.entidade, r.entidade_id].filter(Boolean).join(' #') || '—') + '</td>' +
+          '<td class="td-nowrap">' + e(r.ip || '—') + '</td>' +
+          '</tr>';
+      }).join('') : '<tr><td colspan="5" class="estado-vazio">Nenhum registro ainda.</td></tr>';
+    }).catch(tratarFalha);
+  }
+
+  function abrirFormularioUsuario(usuario) {
+    var edicao = !!usuario;
+    abrirModal({
+      titulo: edicao ? 'Editar usuário' : 'Novo usuário',
+      sub: edicao ? usuario.usuario : 'O login não pode ser alterado depois de criado.',
+      corpo: '<form id="formUsuario" autocomplete="off"><div class="form-grade">' +
+        '<label class="campo col-2"><span>Nome completo <b class="obrig">*</b></span>' +
+        '<input type="text" id="uNome" maxlength="120" value="' +
+        e(edicao ? usuario.nome : '') + '"></label>' +
+        '<label class="campo"><span>Login <b class="obrig">*</b></span>' +
+        '<input type="text" id="uUsuario" maxlength="60" value="' +
+        e(edicao ? usuario.usuario : '') + '"' + (edicao ? ' disabled' : '') +
+        ' placeholder="letras, números, . _ -"></label>' +
+        '<label class="campo"><span>E-mail <b class="obrig">*</b></span>' +
+        '<input type="email" id="uEmail" maxlength="160" value="' +
+        e(edicao ? usuario.email : '') + '"></label>' +
+        '<fieldset class="campo sem-borda"><span class="rotulo">Perfil</span><div class="opcoes">' +
+        '<label class="opcao"><input type="radio" name="uPerfil" value="usuario"' +
+        (!edicao || usuario.perfil === 'usuario' ? ' checked' : '') + '><span>Visualização</span></label>' +
+        '<label class="opcao"><input type="radio" name="uPerfil" value="admin"' +
+        (edicao && usuario.perfil === 'admin' ? ' checked' : '') + '><span>Administrador</span></label>' +
+        '</div></fieldset>' +
+        (edicao
+          ? '<label class="campo opcao-inline"><input type="checkbox" id="uAtivo"' +
+            (usuario.ativo ? ' checked' : '') + '><span>Conta ativa</span></label>'
+          : '<label class="campo"><span>Senha inicial <b class="obrig">*</b></span>' +
+            '<input type="password" id="uSenha" maxlength="200" autocomplete="new-password"></label>') +
+        '</div>' +
+        (edicao ? '' : '<p class="nota">Mínimo de 10 caracteres, com letras e números. ' +
+          'O usuário será obrigado a trocá-la no primeiro acesso.</p>') +
+        '</form>',
+      rodape: '<button class="btn btn-fantasma" data-fechar>Cancelar</button>' +
+        '<button class="btn btn-primario" id="btnSalvarUsuario">' +
+        (edicao ? 'Salvar alterações' : 'Criar usuário') + '</button>',
+      modo: 'usuario'
+    });
+
+    function salvar(ev) {
+      if (ev) ev.preventDefault();
+      var botao = $('#btnSalvarUsuario');
+      var perfil = document.querySelector('input[name="uPerfil"]:checked').value;
+      var dados = {
+        nome: $('#uNome').value.trim(),
+        email: $('#uEmail').value.trim(),
+        perfil: perfil
+      };
+
+      var envio;
+      if (edicao) {
+        dados.id = usuario.id;
+        dados.ativo = $('#uAtivo').checked;
+        envio = Api.atualizarUsuario(dados);
+      } else {
+        dados.usuario = $('#uUsuario').value.trim();
+        dados.senha = $('#uSenha').value;
+        dados.deveTrocarSenha = true;
+        envio = Api.criarUsuario(dados);
+      }
+
+      botao.disabled = true;
+      envio.then(function () {
+        fecharModal();
+        carregarUsuarios();
+        carregarAuditoria();
+        avisar(edicao ? 'Usuário atualizado.' : 'Usuário criado.', 'ok');
+      }).catch(tratarFalha).finally(function () { botao.disabled = false; });
+    }
+
+    $('#formUsuario').addEventListener('submit', salvar);
+    $('#btnSalvarUsuario').addEventListener('click', salvar);
+    setTimeout(function () { var c = $('#uNome'); if (c) c.focus(); }, 60);
+  }
+
+  function abrirRedefinicaoSenha(usuario) {
+    abrirModal({
+      titulo: 'Redefinir senha',
+      sub: usuario.nome + ' (' + usuario.usuario + ')',
+      corpo: '<form id="formReset" autocomplete="off"><label class="campo">' +
+        '<span>Nova senha</span>' +
+        '<input type="password" id="rSenha" maxlength="200" autocomplete="new-password"></label>' +
+        '<p class="nota">Mínimo de 10 caracteres, com letras e números. A pessoa será ' +
+        'obrigada a definir uma nova senha no próximo acesso.</p></form>',
+      rodape: '<button class="btn btn-fantasma" data-fechar>Cancelar</button>' +
+        '<button class="btn btn-primario" id="btnConfirmarReset">Redefinir</button>',
+      modo: 'usuario'
+    });
+
+    function confirmar(ev) {
+      if (ev) ev.preventDefault();
+      var botao = $('#btnConfirmarReset');
+      botao.disabled = true;
+      Api.redefinirSenha(usuario.id, $('#rSenha').value).then(function () {
+        fecharModal();
+        carregarUsuarios();
+        avisar('Senha redefinida.', 'ok');
+      }).catch(tratarFalha).finally(function () { botao.disabled = false; });
+    }
+
+    $('#formReset').addEventListener('submit', confirmar);
+    $('#btnConfirmarReset').addEventListener('click', confirmar);
+    setTimeout(function () { var c = $('#rSenha'); if (c) c.focus(); }, 60);
+  }
+
+  function tratarAcaoUsuario(ev) {
+    var botao = ev.target.closest('[data-usuario-acao]');
+    if (!botao) return;
+    var linha = botao.closest('tr[data-id]');
+    if (!linha) return;
+
+    var usuario = app.usuarios.filter(function (u) { return u.id === linha.dataset.id; })[0];
+    if (!usuario) return;
+
+    var acao = botao.getAttribute('data-usuario-acao');
+    if (acao === 'editar') { abrirFormularioUsuario(usuario); return; }
+    if (acao === 'senha') { abrirRedefinicaoSenha(usuario); return; }
+    if (acao === 'excluir') {
+      if (!confirm('Excluir o usuário "' + usuario.nome + '"?\n' +
+        'As atividades registradas por ele são mantidas.')) return;
+      Api.excluirUsuario(usuario.id).then(function () {
+        carregarUsuarios();
+        carregarAuditoria();
+        avisar('Usuário excluído.');
+      }).catch(tratarFalha);
+    }
   }
 
   /* ========================================================== exportação */
@@ -873,7 +1100,7 @@
 
   function aplicarTema(tema) {
     document.documentElement.setAttribute('data-tema', tema);
-    St.salvarConfig({ tema: tema });
+    St.salvarTema(tema);
   }
 
   /* ========================================================= atualização */
@@ -891,7 +1118,8 @@
       if (b) irPara(b.dataset.view);
     });
 
-    $('#btnPerfil').addEventListener('click', alternarPerfil);
+    $('#btnSair').addEventListener('click', sair);
+    $('#btnMinhaSenha').addEventListener('click', abrirTrocaSenha);
 
     $('#btnTema').addEventListener('click', function () {
       var atual = document.documentElement.getAttribute('data-tema');
@@ -1034,40 +1262,57 @@
       r.addEventListener('change', alternarCamposJornada);
     });
     $('#btnSalvarConfig').addEventListener('click', salvarConfiguracoes);
-    $('#btnSalvarPin').addEventListener('click', salvarPin);
     $('#btnBackup').addEventListener('click', exportarBackup);
     $('#btnRestaurar').addEventListener('click', function () { $('#arquivoBackup').click(); });
     $('#arquivoBackup').addEventListener('change', function () {
       if (this.files && this.files[0]) importarBackup(this.files[0]);
       this.value = '';
     });
-    $('#btnLimparDados').addEventListener('click', function () {
-      if (!confirm('Apagar TODOS os registros deste navegador? Esta ação não pode ser desfeita.')) return;
-      if (!confirm('Confirma definitivamente a exclusão de todos os registros?')) return;
-      St.limparTudo();
-      atualizarTudo();
-      avisar('Todos os registros foram apagados.');
-    });
+
+    // ---- usuários
+    $('#btnNovoUsuario').addEventListener('click', function () { abrirFormularioUsuario(null); });
+    $('#corpoUsuarios').addEventListener('click', tratarAcaoUsuario);
+    $('#btnAtualizarAuditoria').addEventListener('click', carregarAuditoria);
   }
 
   /* ================================================================ init */
 
   function iniciar() {
-    St.carregar();
-    var c = St.config();
-
-    aplicarTema(c.tema === 'escuro' ? 'escuro' : 'claro');
-    aplicarIdentidade();
+    aplicarTema(St.tema());
 
     $('#aModelo').innerHTML = S.MODELOS.map(function (m) {
       return '<option value="' + e(m.id) + '">' + e(m.nome) + '</option>';
     }).join('');
 
+    // Sessão caindo no meio do uso: volta para o login sem travar a tela.
+    Api.aoExpirar = function () {
+      setTimeout(irParaLogin, 1200);
+    };
+
     ligarEventos();
-    aplicarPerfil();
-    limparFormulario();
-    carregarConfigNaTela();
-    irPara('painel');
+
+    St.carregar().then(function (autenticado) {
+      if (!autenticado) { irParaLogin(); return; }
+
+      var usuario = St.usuario();
+      if (usuario && usuario.deveTrocarSenha) {
+        // O servidor bloqueia as demais rotas até a troca; a tela de login
+        // conduz esse fluxo.
+        irParaLogin();
+        return;
+      }
+
+      aplicarIdentidade();
+      aplicarSessao();
+      limparFormulario();
+      carregarConfigNaTela();
+      irPara('painel');
+      document.body.classList.add('pronto');
+    }).catch(function (e) {
+      if (e && e.status === 401) { irParaLogin(); return; }
+      document.body.classList.add('pronto');
+      avisar('Não foi possível carregar os dados: ' + e.message, 'erro');
+    });
   }
 
   if (document.readyState === 'loading') {

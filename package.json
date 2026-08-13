@@ -2,13 +2,19 @@
   "name": "diario-bordo-cecape",
   "version": "1.0.0",
   "private": true,
-  "description": "Diário de bordo de atividades com previsão automática das fases, perfis admin/visualização e exportação para XLS, PDF e impressão.",
+  "description": "Diário de bordo de atividades com previsão automática das fases, backend PHP + MySQL, autenticação por perfis e exportação para XLS, PDF e impressão.",
   "scripts": {
-    "start": "npx --yes http-server -p 8123 -s -c-1 .",
+    "start": "php -S localhost:8124 -t .",
     "test": "node tests/motor.test.js",
+    "test:api": "node tests/api.test.js",
     "test:interface": "node tests/interface.test.js",
-    "test:pdf": "node tests/valida-pdf.js tests/.saida/relatorio.pdf"
+    "test:pdf": "node tests/valida-pdf.js tests/.saida/relatorio.pdf",
+    "criar-admin": "php ferramentas/criar-admin.php"
   },
-  "keywords": ["diario-de-bordo", "registro-de-atividades", "cecape"],
+  "keywords": [
+    "diario-de-bordo",
+    "registro-de-atividades",
+    "cecape"
+  ],
   "license": "MIT"
 }

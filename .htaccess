@@ -1,0 +1,58 @@
+# =========================================================================
+#  Proteção da raiz pública (Apache — HostGator, cPanel e similares)
+# =========================================================================
+
+Options -Indexes
+
+# Página inicial: sem sessão, o próprio app redireciona para login.html.
+DirectoryIndex index.html
+
+# ---------------------------------------------------------- HTTPS ------
+# Descomente ao publicar com certificado (recomendado — o cookie de sessão
+# só é marcado como "secure" sob HTTPS).
+# <IfModule mod_rewrite.c>
+#     RewriteEngine On
+#     RewriteCond %{HTTPS} !=on
+#     RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+# </IfModule>
+
+# ------------------------------------------------- arquivos privados ---
+# Nada aqui deve ser baixável pela web.
+RedirectMatch 404 ^/.*/(sql|tests|ferramentas|node_modules|\.git)(/.*)?$
+
+<FilesMatch "\.(sql|json|md|log|example|lock|yml|yaml)$">
+    Require all denied
+</FilesMatch>
+# O package.json não expõe segredo algum, mas também não precisa ser servido.
+<Files "package.json">
+    Require all denied
+</Files>
+
+# ------------------------------------------------------- cabeçalhos ----
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), interest-cohort=()"
+    Header always unset X-Powered-By
+
+    # A aplicação não carrega nada de fora: tudo é servido pela própria origem.
+    # 'unsafe-inline' em style-src é necessário porque as barras de progresso e
+    # da linha do tempo usam largura calculada em atributo style.
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+
+    # Descomente junto com o redirecionamento de HTTPS acima.
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # As telas mostram dados de sessão: não devem ficar em cache compartilhado.
+    <FilesMatch "\.html$">
+        Header always set Cache-Control "no-store, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# ---------------------------------------------------------- estáticos --
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
