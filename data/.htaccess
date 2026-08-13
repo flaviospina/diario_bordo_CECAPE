@@ -1,0 +1,2 @@
+# Bloqueia acesso direto ao banco de dados via navegador
+Require all denied
