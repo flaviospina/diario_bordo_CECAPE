@@ -2,14 +2,16 @@
 
 Diário de bordo para registro das atividades executadas em home office, com dia e horário de início e término de cada atividade e de cada fase. Serve como controle dos projetos executados durante o período de trabalho remoto, permitindo que a direção acompanhe o andamento em modo de consulta.
 
+**Produção:** `https://cecapescs.com.br/diariobordo`
+
 ## Como funciona
 
 O sistema tem **dois modos de acesso**:
 
-| Modo | Página | Quem usa | O que pode fazer |
+| Modo | Endereço | Quem usa | O que pode fazer |
 |---|---|---|---|
-| **Administrador** | `admin.php` | Somente o responsável pelo diário (protegido por senha) | Propor atividades, iniciar/concluir fases, editar e excluir registros |
-| **Consulta** | `index.php` | Diretor e demais interessados (sem senha) | Visualizar, filtrar, exportar XLS e PDF e imprimir |
+| **Administrador** | `index.php?r=admin` | Somente o responsável pelo diário (protegido por senha) | Propor atividades, iniciar/concluir fases, editar e excluir registros, trocar a senha |
+| **Consulta** | `index.php` (raiz) | Diretor e demais interessados (sem senha) | Visualizar, filtrar, exportar XLS e PDF e imprimir |
 
 ### Previsão automática das fases
 
@@ -26,37 +28,68 @@ As fases e os pesos podem ser ajustados livremente em cada atividade antes de re
 
 - Filtros por período (hoje, semana, mês, tudo ou datas livres) e busca por texto.
 - Resumo com total de atividades, concluídas, em andamento, horas registradas e dias de trabalho.
-- Exportação para **XLS** (planilha com uma linha por fase), **PDF** (relatório em paisagem) e **impressão** com layout próprio.
+- Exportação para **XLS**, **PDF** e **impressão** com layout próprio.
 
-## Tecnologia
+## Arquitetura (MVC)
 
-- PHP 8+ com SQLite (arquivo único em `data/diario.sqlite`, criado automaticamente no primeiro acesso) — roda em qualquer hospedagem compartilhada (HostGator etc.), sem instalação de banco de dados.
-- Front-end sem framework, layout moderno e minimalista.
-- Bibliotecas de exportação (SheetJS e jsPDF) carregadas por CDN, com alternativa embutida caso o CDN esteja indisponível.
+Aplicação PHP 8+ com PDO/SQLite em estrutura MVC com front controller único:
 
-## Instalação
+```
+index.php                     Front controller — único ponto de entrada (rotas via ?r=...)
+.htaccess                     Bloqueia app/ e data/, URLs amigáveis, sem listagem de diretórios
+assets/                       CSS e JavaScript (públicos)
+data/                         Banco SQLite (negado ao navegador, criado automaticamente)
+app/
+├── bootstrap.php             Autoloader PSR-4 e helpers (escape de saída, URLs)
+├── Config/config.php         Configurações (fuso, limites, fases padrão)
+├── Core/
+│   ├── Router.php            Mapeamento método+rota → controller/ação
+│   ├── Controller.php        Base: respostas JSON, corpo da requisição, guardas
+│   ├── View.php              Renderização de templates com layout
+│   ├── Database.php          PDO singleton + migrações (schema criado no 1º acesso)
+│   ├── Session.php           Sessão endurecida (cookie restrito, expiração, regeneração)
+│   └── Csrf.php              Emissão e validação de token CSRF
+├── Controllers/
+│   ├── DiarioController.php  Página de consulta
+│   ├── AdminController.php   Página de administração
+│   └── ApiController.php     API JSON (leitura pública; escrita autenticada)
+├── Models/
+│   ├── Activity.php          Atividades + cálculo da previsão das fases
+│   ├── Phase.php             Horários reais das fases
+│   ├── Setting.php           Configurações persistidas (hash da senha)
+│   └── LoginAttempt.php      Controle de tentativas de login
+└── Views/
+    ├── layouts/main.php      Layout base (cabeçalho, meta CSRF, assets)
+    ├── diario/index.php      Modo consulta
+    ├── admin/index.php       Modo administrador (login, formulário, troca de senha)
+    └── partials/board.php    Painel compartilhado (resumo, filtros, lista)
+```
 
-1. Envie todos os arquivos para uma pasta do servidor (ex.: `public_html/diario`).
-2. Acesse `https://seusite/diario/admin.php` e entre com a senha padrão: **cecape2026**.
-3. **Troque a senha**: acesse `gerar_senha.php`, gere o hash da nova senha, cole em `ADMIN_PASSWORD_HASH` no `config.php` e depois **exclua o arquivo `gerar_senha.php` do servidor**.
-4. Compartilhe com a direção apenas o endereço `https://seusite/diario/` (modo consulta).
+## Segurança
+
+- **PDO com prepared statements** em todas as consultas (`ATTR_EMULATE_PREPARES` desativado).
+- **CSRF**: toda requisição de escrita exige o token da sessão no cabeçalho `X-CSRF-Token`.
+- **Força bruta**: 5 senhas erradas em 15 minutos bloqueiam novas tentativas do IP.
+- **Sessão**: cookie `HttpOnly` + `SameSite=Lax` + `Secure` (em HTTPS), restrito ao diretório da aplicação; `session_regenerate_id` no login (contra fixação); expiração por inatividade (8h).
+- **Senha**: hash `password_hash`/bcrypt armazenado no banco; troca autenticada pelo próprio painel (exige a senha atual, mínimo de 8 caracteres); re-hash automático quando o algoritmo padrão do PHP evoluir.
+- **Escape de saída** em todas as views (`e()`) e no front-end (`esc()`); validação e limites de tamanho em todas as entradas.
+- **Cabeçalhos**: Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy.
+- **Código e dados inacessíveis**: `app/` e `data/` negados por `.htaccess`; além disso todo arquivo PHP da aplicação sai vazio se chamado diretamente (guarda `APP_RUNNING`).
+- **Erros** nunca exibidos ao visitante (registrados no log do servidor).
+
+## Instalação (HostGator ou similar)
+
+1. Envie todos os arquivos para `public_html/diariobordo` (mantendo os `.htaccess`).
+2. Acesse `https://cecapescs.com.br/diariobordo/index.php?r=admin` e entre com a senha inicial: **cecape2026**.
+3. **Troque a senha imediatamente** no painel, em "Trocar senha do administrador".
+4. Compartilhe com a direção apenas `https://cecapescs.com.br/diariobordo/` (modo consulta).
+
+O banco SQLite é criado automaticamente no primeiro acesso — não é preciso configurar MySQL nem editar arquivos.
 
 Para testar localmente:
 
 ```bash
 php -S localhost:8000
-# abra http://localhost:8000/admin.php
-```
-
-## Estrutura
-
-```
-config.php        Configurações (senha, fases padrão, fuso horário)
-db.php            Conexão e criação do banco SQLite
-api.php           API JSON (leitura pública, escrita restrita ao admin)
-index.php         Modo consulta (diretor)
-admin.php         Modo administrador (registro das atividades)
-gerar_senha.php   Utilitário para trocar a senha (excluir após uso)
-assets/           CSS e JavaScript
-data/             Banco SQLite (protegido contra acesso direto)
+# consulta: http://localhost:8000/index.php
+# admin:    http://localhost:8000/index.php?r=admin
 ```

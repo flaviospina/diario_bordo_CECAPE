@@ -1,0 +1,20 @@
+# Diário de Bordo CECAPE — cecapescs.com.br/diariobordo
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Bloqueia acesso direto ao código da aplicação e ao banco de dados
+  RewriteRule ^(app|data)(/|$) - [F,L]
+
+  # URLs amigáveis: tudo que não for arquivo real passa pelo front controller
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+# Redundância caso o mod_rewrite esteja desativado: nega PHP fora da raiz
+<IfModule mod_authz_core.c>
+  <FilesMatch "\.(sqlite|log)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>

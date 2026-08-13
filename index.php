@@ -1,64 +1,70 @@
-<?php require_once __DIR__ . '/config.php'; ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="robots" content="noindex">
-  <title><?= APP_NAME ?></title>
-  <link rel="stylesheet" href="assets/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%234f46e5'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>D</text></svg>">
-  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
-  <script>const IS_ADMIN_PAGE = false;</script>
-  <script defer src="assets/app.js"></script>
-</head>
-<body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="logo">DB</div>
-      <div class="brand">
-        <h1>Diário de Bordo · CECAPE</h1>
-        <p>Registro de atividades em home office — <?= APP_OWNER ?></p>
-      </div>
-      <div class="spacer"></div>
-      <span class="badge-mode viewer">Modo consulta</span>
-      <a class="btn ghost" href="admin.php">Área do administrador</a>
-    </div>
-  </header>
+<?php
+declare(strict_types=1);
 
-  <main class="container">
-    <div class="print-header">
-      <h1>Diário de Bordo — CECAPE</h1>
-      <p>Registro de atividades em home office · <?= APP_OWNER ?></p>
-      <p id="print-period"></p>
-    </div>
+/**
+ * Diário de Bordo CECAPE — front controller (único ponto de entrada).
+ * Produção: https://cecapescs.com.br/diariobordo
+ */
 
-    <div id="stats" class="stats"></div>
+require __DIR__ . '/app/bootstrap.php';
 
-    <div class="card filters">
-      <div class="field"><label>De</label><input type="date" id="f-from"></div>
-      <div class="field"><label>Até</label><input type="date" id="f-to"></div>
-      <div class="field grow"><label>Buscar</label><input type="search" id="f-q" placeholder="Título, descrição ou categoria…"></div>
-      <div class="field"><label>Período rápido</label>
-        <div style="display:flex;gap:6px">
-          <button class="btn small" data-period="hoje">Hoje</button>
-          <button class="btn small" data-period="semana">Semana</button>
-          <button class="btn small" data-period="mes">Mês</button>
-          <button class="btn small" data-period="tudo">Tudo</button>
-        </div>
-      </div>
-      <div class="export-group">
-        <button class="btn" id="btn-xls">⬇ XLS</button>
-        <button class="btn" id="btn-pdf">⬇ PDF</button>
-        <button class="btn" id="btn-print">🖨 Imprimir</button>
-      </div>
-    </div>
+use App\Controllers\AdminController;
+use App\Controllers\ApiController;
+use App\Controllers\DiarioController;
+use App\Core\Router;
+use App\Core\Session;
 
-    <div id="list"></div>
-  </main>
+// Erros nunca são exibidos ao visitante (vão para o log do servidor)
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
 
-  <div id="toast" class="toast"></div>
-</body>
-</html>
+// Cabeçalhos de segurança
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: SAMEORIGIN');
+header('Referrer-Policy: same-origin');
+header('X-Robots-Tag: noindex');
+header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+header("Content-Security-Policy: default-src 'self'; "
+    . "script-src 'self' https://cdn.jsdelivr.net; "
+    . "style-src 'self' 'unsafe-inline'; "
+    . "img-src 'self' data:; "
+    . "connect-src 'self'; "
+    . "base-uri 'self'; frame-ancestors 'self'; form-action 'self'; object-src 'none'");
+
+Session::start();
+
+$router = new Router();
+
+// Páginas
+$router->add('GET', '', DiarioController::class, 'index');
+$router->add('GET', 'admin', AdminController::class, 'index');
+
+// API — leitura pública
+$router->add('GET', 'api/list', ApiController::class, 'list');
+$router->add('GET', 'api/me', ApiController::class, 'me');
+
+// API — autenticação
+$router->add('POST', 'api/login', ApiController::class, 'login');
+$router->add('POST', 'api/logout', ApiController::class, 'logout');
+$router->add('POST', 'api/password', ApiController::class, 'changePassword');
+
+// API — escrita (somente administrador)
+$router->add('GET', 'api/default-phases', ApiController::class, 'defaultPhases');
+$router->add('POST', 'api/create', ApiController::class, 'create');
+$router->add('POST', 'api/update-activity', ApiController::class, 'updateActivity');
+$router->add('POST', 'api/delete', ApiController::class, 'delete');
+$router->add('POST', 'api/phase', ApiController::class, 'phase');
+
+$route = Router::currentRoute();
+try {
+    $router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $route);
+} catch (Throwable $e) {
+    error_log('[diario_bordo] ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine());
+    http_response_code(500);
+    if (str_starts_with($route, 'api/')) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Erro interno. Tente novamente.'], JSON_UNESCAPED_UNICODE);
+    } else {
+        echo '<h1>Erro interno</h1><p>Tente novamente em instantes.</p>';
+    }
+}

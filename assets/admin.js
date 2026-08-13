@@ -24,6 +24,20 @@ async function doLogout() {
   location.reload();
 }
 
+async function changePassword(ev) {
+  ev.preventDefault();
+  const current = $('#p-current').value;
+  const nova = $('#p-new').value;
+  const confirm_ = $('#p-confirm').value;
+  if (nova !== confirm_) return toast('A confirmação não confere com a nova senha.');
+  if (nova.length < 8) return toast('A nova senha deve ter pelo menos 8 caracteres.');
+  try {
+    await api('password', { body: { current, new: nova } });
+    $('#p-current').value = $('#p-new').value = $('#p-confirm').value = '';
+    toast('Senha alterada com sucesso.');
+  } catch (e) { toast(e.message); }
+}
+
 /* ---------- Editor de fases + previsão ---------- */
 
 function phaseEditorRow(name = '', weight = '') {
@@ -120,8 +134,9 @@ async function initAdmin() {
 
   $('#btn-logout').style.display = '';
   $('#btn-logout').addEventListener('click', doLogout);
+  $('#pass-form').addEventListener('submit', changePassword);
 
-  DEFAULT_PHASES = (await api('default_phases')).phases;
+  DEFAULT_PHASES = (await api('default-phases')).phases;
   resetPhaseEditor();
 
   const now = new Date();

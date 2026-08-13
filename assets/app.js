@@ -1,8 +1,11 @@
 /* Diário de Bordo CECAPE — front-end (visualização + admin) */
-/* global XLSX, jspdf, IS_ADMIN_PAGE */
+/* global XLSX, jspdf */
 
-const API = 'api.php';
 let STATE = { activities: [], admin: false };
+
+function csrfToken() {
+  return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
 
 /* ---------------- Utilidades ---------------- */
 
@@ -66,10 +69,13 @@ const STATUS_LABEL = {
 };
 
 async function api(action, opts = {}) {
-  const url = `${API}?action=${action}${opts.qs ? '&' + opts.qs : ''}`;
+  const url = `index.php?r=api/${action}${opts.qs ? '&' + opts.qs : ''}`;
   const res = await fetch(url, opts.body ? {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken()
+    },
     body: JSON.stringify(opts.body)
   } : undefined);
   const data = await res.json().catch(() => ({}));
@@ -260,7 +266,7 @@ function bindAdminListEvents() {
         if (category === null) return;
         const description = prompt('Descrição:', a.description || '');
         if (description === null) return;
-        await api('update_activity', { body: { id, title, category, description } });
+        await api('update-activity', { body: { id, title, category, description } });
         toast('Atividade atualizada.');
       }
       await load();
@@ -365,7 +371,7 @@ function doPrint() {
 
 async function init() {
   const me = await api('me').catch(() => ({ admin: false }));
-  STATE.admin = !!me.admin && typeof IS_ADMIN_PAGE !== 'undefined' && IS_ADMIN_PAGE;
+  STATE.admin = !!me.admin && document.body.dataset.page === 'admin';
 
   $('#btn-xls').addEventListener('click', exportXLS);
   $('#btn-pdf').addEventListener('click', exportPDF);

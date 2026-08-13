@@ -1,0 +1,152 @@
+<?php
+declare(strict_types=1);
+
+namespace App\Models;
+
+defined('APP_RUNNING') or exit;
+
+use App\Core\Database;
+use DateTime;
+
+final class Activity
+{
+    /** Lista atividades (com fases e status derivado) filtradas por período e busca. */
+    public static function allWithPhases(?string $from, ?string $to, ?string $q): array
+    {
+        $sql = 'SELECT * FROM activities WHERE 1=1';
+        $params = [];
+        if ($from) {
+            $sql .= ' AND date >= :from';
+            $params[':from'] = $from;
+        }
+        if ($to) {
+            $sql .= ' AND date <= :to';
+            $params[':to'] = $to;
+        }
+        if ($q) {
+            $sql .= ' AND (title LIKE :q OR description LIKE :q OR category LIKE :q)';
+            $params[':q'] = '%' . addcslashes($q, '%_\\') . '%';
+        }
+        $sql .= ' ORDER BY date DESC, prev_start ASC, id ASC';
+        $stmt = Database::pdo()->prepare($sql);
+        $stmt->execute($params);
+        $activities = $stmt->fetchAll();
+
+        $phStmt = Database::pdo()->prepare('SELECT * FROM phases WHERE activity_id = :id ORDER BY ord, id');
+        foreach ($activities as &$a) {
+            $phStmt->execute([':id' => $a['id']]);
+            $a['phases'] = $phStmt->fetchAll();
+            $a['status'] = self::deriveStatus($a['phases']);
+            $starts = array_filter(array_column($a['phases'], 'real_start'));
+            $ends = array_column($a['phases'], 'real_end');
+            $a['real_start'] = $starts ? min($starts) : null;
+            $a['real_end'] = ($ends && !in_array(null, $ends, true) && !in_array('', $ends, true)) ? max($ends) : null;
+        }
+        return $activities;
+    }
+
+    /** Cria a atividade e suas fases com a previsão já calculada. */
+    public static function create(array $meta, array $phasePreviews): int
+    {
+        $pdo = Database::pdo();
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare('INSERT INTO activities (title, description, category, date, prev_start, prev_end, created_at)
+                                   VALUES (:t, :d, :c, :dt, :ps, :pe, :ca)');
+            $stmt->execute([
+                ':t' => $meta['title'],
+                ':d' => $meta['description'],
+                ':c' => $meta['category'],
+                ':dt' => $meta['date'],
+                ':ps' => $phasePreviews[0]['prev_start'],
+                ':pe' => $phasePreviews[count($phasePreviews) - 1]['prev_end'],
+                ':ca' => date('Y-m-d H:i:s'),
+            ]);
+            $id = (int)$pdo->lastInsertId();
+            $ph = $pdo->prepare('INSERT INTO phases (activity_id, name, ord, prev_start, prev_end)
+                                 VALUES (:a, :n, :o, :ps, :pe)');
+            foreach ($phasePreviews as $p) {
+                $ph->execute([':a' => $id, ':n' => $p['name'], ':o' => $p['ord'],
+                              ':ps' => $p['prev_start'], ':pe' => $p['prev_end']]);
+            }
+            $pdo->commit();
+            return $id;
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    public static function updateMeta(int $id, string $title, string $description, string $category): void
+    {
+        $stmt = Database::pdo()->prepare('UPDATE activities SET title = :t, description = :d, category = :c WHERE id = :id');
+        $stmt->execute([':t' => $title, ':d' => $description, ':c' => $category, ':id' => $id]);
+    }
+
+    public static function delete(int $id): void
+    {
+        Database::pdo()->prepare('DELETE FROM activities WHERE id = :id')->execute([':id' => $id]);
+    }
+
+    /**
+     * Gera a previsão de cada fase distribuindo a duração total pelos pesos,
+     * em sequência a partir do horário de início informado.
+     */
+    public static function buildPhasePreviews(string $date, string $startTime, int $durationMin, array $phases): array
+    {
+        $totalWeight = 0;
+        foreach ($phases as $p) {
+            $totalWeight += max(0, (float)($p['weight'] ?? 0));
+        }
+        if ($totalWeight <= 0) {
+            foreach ($phases as &$p) {
+                $p['weight'] = 1;
+            }
+            unset($p);
+            $totalWeight = count($phases);
+        }
+
+        $cursor = new DateTime("$date $startTime");
+        $out = [];
+        $n = count($phases);
+        $used = 0;
+        foreach (array_values($phases) as $i => $p) {
+            // A última fase recebe o restante para fechar exatamente a duração total
+            $mins = ($i === $n - 1)
+                ? $durationMin - $used
+                : (int)round($durationMin * ((float)$p['weight'] / $totalWeight));
+            $mins = max(1, $mins);
+            $used += $mins;
+            $start = clone $cursor;
+            $cursor->modify("+{$mins} minutes");
+            $out[] = [
+                'name' => trim((string)$p['name']),
+                'ord' => $i,
+                'prev_start' => $start->format('Y-m-d H:i'),
+                'prev_end' => $cursor->format('Y-m-d H:i'),
+            ];
+        }
+        return $out;
+    }
+
+    private static function deriveStatus(array $phases): string
+    {
+        if (!$phases) {
+            return 'prevista';
+        }
+        $allDone = true;
+        $anyStarted = false;
+        foreach ($phases as $p) {
+            if (!empty($p['real_start'])) {
+                $anyStarted = true;
+            }
+            if (empty($p['real_end'])) {
+                $allDone = false;
+            }
+        }
+        if ($allDone) {
+            return 'concluida';
+        }
+        return $anyStarted ? 'em_andamento' : 'prevista';
+    }
+}
