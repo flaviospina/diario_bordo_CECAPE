@@ -10,8 +10,26 @@ defined('APP_RUNNING') or exit;
 
 date_default_timezone_set('America/Sao_Paulo');
 
+/*
+ * Ajustes específicos do servidor (não versionado no git).
+ * Copie config.local.php.example para config.local.php para, por exemplo,
+ * guardar o banco de dados fora da raiz web ou trocar o caminho das logos.
+ * Carregado antes das constantes abaixo para poder sobrescrevê-las.
+ */
+if (is_file(__DIR__ . '/config.local.php')) {
+    require __DIR__ . '/config.local.php';
+}
+
 const APP_NAME  = 'Diário de Bordo · CECAPE';
 const APP_OWNER = 'Prof. Flávio Spina';
+
+// Logos institucionais exibidas na barra superior e no login
+defined('LOGO_BASE') or define('LOGO_BASE', 'https://cecapescs.com.br/logos');
+const LOGOS = [
+    ['file' => 'logo-seeduc.png',     'alt' => 'SEEDUC'],
+    ['file' => 'logo-autoriascs.png', 'alt' => 'AutoriaSCS'],
+    ['file' => 'logo-cecape-new.png', 'alt' => 'CECAPE'],
+];
 
 /**
  * Hash da senha inicial do administrador (senha padrão: cecape2026).
@@ -41,12 +59,3 @@ const DEFAULT_PHASES = [
     ['name' => 'Verificação e ajustes', 'weight' => 20],
     ['name' => 'Conclusão e registro',  'weight' => 10],
 ];
-
-/*
- * Ajustes específicos do servidor (não versionado no git).
- * Copie config.local.php.example para config.local.php para, por exemplo,
- * guardar o banco de dados fora da raiz web (recomendado em VPS).
- */
-if (is_file(__DIR__ . '/config.local.php')) {
-    require __DIR__ . '/config.local.php';
-}

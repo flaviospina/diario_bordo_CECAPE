@@ -24,6 +24,10 @@ Ao propor uma atividade, o administrador informa **título, data, horário de in
 
 As fases e os pesos podem ser ajustados livremente em cada atividade antes de registrar. Durante o trabalho, os botões **Iniciar** e **Concluir** registram os horários reais de cada fase (também é possível editá-los manualmente).
 
+### Identidade visual
+
+Interface no padrão visual CECAPE / AutoriaSCS: tema escuro (navy `#0b1628`) com acentos em ciano e laranja, tipografia Inter, cartões de indicadores coloridos, badges de status e rodapé institucional. A barra superior e a tela de login exibem as logos SEEDUC, AutoriaSCS e CECAPE, servidas de `https://cecapescs.com.br/logos` (o caminho pode ser alterado por `LOGO_BASE` no `config.local.php`). A impressão e o PDF são convertidos automaticamente para tema claro, próprio para papel.
+
 ### Consulta e exportação
 
 - Filtros por período (hoje, semana, mês, tudo ou datas livres) e busca por texto.
@@ -42,8 +46,8 @@ assets/                       CSS e JavaScript (públicos)
 data/                         Banco SQLite com nome aleatório (criado automaticamente)
 app/
 ├── bootstrap.php             Autoloader PSR-4 e helpers (escape de saída, URLs)
-├── Config/config.php         Configurações (fuso, limites, fases padrão)
-├── Config/config.local.php.example  Ajustes por servidor (ex.: banco fora da raiz web)
+├── Config/config.php         Configurações (fuso, limites, fases padrão, logos)
+├── Config/config.local.php.example  Ajustes por servidor (banco fora da raiz web, LOGO_BASE)
 ├── Core/
 │   ├── Router.php            Mapeamento método+rota → controller/ação
 │   ├── Controller.php        Base: respostas JSON, corpo da requisição, guardas

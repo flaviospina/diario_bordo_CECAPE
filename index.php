@@ -26,8 +26,9 @@ header('X-Robots-Tag: noindex');
 header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
 header("Content-Security-Policy: default-src 'self'; "
     . "script-src 'self' https://cdn.jsdelivr.net; "
-    . "style-src 'self' 'unsafe-inline'; "
-    . "img-src 'self' data:; "
+    . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    . "font-src 'self' https://fonts.gstatic.com; "
+    . "img-src 'self' data: https://cecapescs.com.br; "
     . "connect-src 'self'; "
     . "base-uri 'self'; frame-ancestors 'self'; form-action 'self'; object-src 'none'");
 

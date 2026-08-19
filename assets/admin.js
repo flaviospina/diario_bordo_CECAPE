@@ -44,9 +44,9 @@ function phaseEditorRow(name = '', weight = '') {
   const row = document.createElement('div');
   row.className = 'row';
   row.innerHTML = `
-    <input type="text" placeholder="Nome da fase" value="${esc(name)}" class="ph-name">
-    <input type="number" min="1" max="100" placeholder="%" value="${esc(weight)}" class="ph-weight" title="Peso da fase (% da duração)">
-    <button type="button" class="btn small ghost ph-del" title="Remover fase">✕</button>`;
+    <input type="text" placeholder="Nome da fase" value="${esc(name)}" class="form-control form-sm ph-name">
+    <input type="number" min="1" max="100" placeholder="%" value="${esc(weight)}" class="form-control form-sm ph-weight" title="Peso da fase (% da duração)">
+    <button type="button" class="btn-icon ph-del" title="Remover fase">✕</button>`;
   row.querySelector('.ph-del').addEventListener('click', () => { row.remove(); renderPreview(); });
   row.querySelectorAll('input').forEach(i => i.addEventListener('input', renderPreview));
   return row;

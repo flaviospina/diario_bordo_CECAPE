@@ -155,11 +155,11 @@ function renderStats() {
   acts.forEach(a => { totalMin += realDuration(a) || 0; });
   const days = new Set(acts.map(a => a.date)).size;
   $('#stats').innerHTML = `
-    <div class="card stat"><div class="label">Atividades</div><div class="value">${acts.length}</div></div>
-    <div class="card stat"><div class="label">Concluídas</div><div class="value">${done} <small>/ ${acts.length}</small></div></div>
-    <div class="card stat"><div class="label">Em andamento</div><div class="value">${inProgress}</div></div>
-    <div class="card stat"><div class="label">Horas registradas</div><div class="value">${fmtDuration(totalMin)}</div></div>
-    <div class="card stat"><div class="label">Dias de trabalho</div><div class="value">${days}</div></div>`;
+    <div class="kpi-card kpi-orange"><div class="kpi-value">${acts.length}</div><div class="kpi-label">Atividades</div></div>
+    <div class="kpi-card kpi-green"><div class="kpi-value">${done}<small> / ${acts.length}</small></div><div class="kpi-label">Concluídas</div></div>
+    <div class="kpi-card kpi-yellow"><div class="kpi-value">${inProgress}</div><div class="kpi-label">Em andamento</div></div>
+    <div class="kpi-card kpi-cyan"><div class="kpi-value">${fmtDuration(totalMin)}</div><div class="kpi-label">Horas registradas</div></div>
+    <div class="kpi-card kpi-purple"><div class="kpi-value">${days}</div><div class="kpi-label">Dias de trabalho</div></div>`;
 }
 
 function phaseRow(p, admin) {
@@ -169,13 +169,13 @@ function phaseRow(p, admin) {
   let actions = '';
   if (admin) {
     if (!started && !done) {
-      actions = `<button class="btn small primary" data-phase="${p.id}" data-op="start">Iniciar</button>`;
+      actions = `<button class="btn-sm btn-info" data-phase="${p.id}" data-op="start">Iniciar</button>`;
     } else if (!done) {
-      actions = `<button class="btn small success" data-phase="${p.id}" data-op="finish">Concluir</button>`;
+      actions = `<button class="btn-sm btn-ok" data-phase="${p.id}" data-op="finish">Concluir</button>`;
     } else {
-      actions = `<button class="btn small ghost" data-phase="${p.id}" data-op="undo" title="Limpar horários reais">Refazer</button>`;
+      actions = `<button class="btn-sm btn-muted" data-phase="${p.id}" data-op="undo" title="Limpar horários reais">Refazer</button>`;
     }
-    actions += `<button class="btn small ghost" data-phase="${p.id}" data-op="edit" title="Editar horários manualmente">Editar</button>`;
+    actions += `<button class="btn-sm btn-muted" data-phase="${p.id}" data-op="edit" title="Editar horários manualmente">Editar</button>`;
   }
   return `
     <div class="phase ${cls}">
@@ -192,7 +192,7 @@ function renderList() {
   const wrap = $('#list');
   const acts = STATE.activities;
   if (!acts.length) {
-    wrap.innerHTML = `<div class="card empty">Nenhuma atividade registrada no período selecionado.</div>`;
+    wrap.innerHTML = `<div class="empty">Nenhuma atividade registrada no período selecionado.</div>`;
     return;
   }
   const byDay = {};
@@ -217,7 +217,7 @@ function activityCard(a, admin) {
   const dur = realDuration(a);
   const prevDur = minutesBetween(a.prev_start, a.prev_end);
   return `
-  <article class="card activity" data-id="${a.id}">
+  <article class="activity st-${a.status}" data-id="${a.id}">
     <div class="activity-head">
       <div class="info">
         <h3 class="activity-title">${esc(a.title)}</h3>
@@ -230,8 +230,8 @@ function activityCard(a, admin) {
         ${a.description ? `<p class="activity-desc">${esc(a.description)}</p>` : ''}
       </div>
       ${admin ? `<div class="activity-actions">
-        <button class="btn small ghost" data-act="${a.id}" data-op="edit-activity">Editar</button>
-        <button class="btn small danger-ghost" data-act="${a.id}" data-op="delete">Excluir</button>
+        <button class="btn-sm btn-info" data-act="${a.id}" data-op="edit-activity">Editar</button>
+        <button class="btn-sm btn-danger" data-act="${a.id}" data-op="delete">Excluir</button>
       </div>` : ''}
     </div>
     <div class="phases">${a.phases.map(p => phaseRow(p, admin)).join('')}</div>
@@ -374,8 +374,8 @@ function exportPDF() {
     head: [cols],
     body: rows.map(r => cols.map(c => r[c])),
     styles: { fontSize: 7.5, cellPadding: 1.6 },
-    headStyles: { fillColor: [79, 70, 229] },
-    alternateRowStyles: { fillColor: [247, 247, 250] }
+    headStyles: { fillColor: [15, 32, 68], textColor: [255, 255, 255] },
+    alternateRowStyles: { fillColor: [240, 246, 252] }
   });
   doc.save(`diario_bordo_cecape_${isoDate(new Date())}.pdf`);
   toast('PDF exportado.');

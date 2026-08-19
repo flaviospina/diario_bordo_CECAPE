@@ -17,3 +17,10 @@ defined('APP_RUNNING') or exit;
  *   sudo chown www-data:www-data /var/lib/diariobordo
  */
 // define('DB_PATH_OVERRIDE', '/var/lib/diariobordo/diario.sqlite');
+
+/*
+ * Caminho das logos institucionais (barra superior e login).
+ * Padrão: https://cecapescs.com.br/logos
+ * Use um caminho relativo se preferir hospedá-las junto da aplicação.
+ */
+// define('LOGO_BASE', 'assets/logos');
