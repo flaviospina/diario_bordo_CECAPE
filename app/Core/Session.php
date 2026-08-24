@@ -24,8 +24,8 @@ final class Session
         ]);
         session_start();
 
-        // Expira a sessão do administrador por inatividade
-        if (!empty($_SESSION['is_admin'])) {
+        // Expira qualquer sessão autenticada por inatividade
+        if (!empty($_SESSION['user_id'])) {
             $last = (int)($_SESSION['last_activity'] ?? 0);
             if (time() - $last > ADMIN_SESSION_LIFETIME) {
                 self::logout();
@@ -41,15 +41,31 @@ final class Session
             || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
     }
 
-    public static function isAdmin(): bool
+    public static function isLogged(): bool
     {
-        return !empty($_SESSION['is_admin']);
+        return !empty($_SESSION['user_id']);
     }
 
-    public static function loginAdmin(): void
+    public static function userId(): ?int
+    {
+        return isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
+    }
+
+    public static function role(): ?string
+    {
+        return $_SESSION['role'] ?? null;
+    }
+
+    public static function isAdmin(): bool
+    {
+        return self::role() === 'admin';
+    }
+
+    public static function loginUser(int $userId, string $role): void
     {
         session_regenerate_id(true); // evita fixação de sessão
-        $_SESSION['is_admin'] = true;
+        $_SESSION['user_id'] = $userId;
+        $_SESSION['role'] = $role;
         $_SESSION['last_activity'] = time();
     }
 

@@ -1,110 +1,73 @@
 # Diário de Bordo · CECAPE
 
-Diário de bordo para registro das atividades executadas em home office, com dia e horário de início e término de cada atividade e de cada fase. Serve como controle dos projetos executados durante o período de trabalho remoto, permitindo que a direção acompanhe o andamento em modo de consulta.
+Diário de bordo multiusuário para registro das atividades executadas em home office, com dia e horário de início e término de cada atividade, de cada etapa e dos descansos (almoço/janta). Serve como controle dos projetos executados no trabalho remoto, com relatórios assinados pela direção e pelo professor.
 
 **Produção:** `https://cecapescs.com.br/diariobordo`
 
-## Como funciona
+## Perfis de acesso (tela de login única)
 
-O sistema tem **dois modos de acesso**:
+| Perfil | Quem | O que faz |
+|---|---|---|
+| **Administrador** | Prof. Flávio Spina (`flavio`) | Cria e gerencia as contas, registra os próprios apontamentos (atua também como professor) e consulta tudo |
+| **Gestão** | Maiberte Brogliato (`maiberte`) e Therezinha (`therezinha`) | Consulta o diário de qualquer professor e gera os relatórios (simplificado ou detalhado) |
+| **Professor** | Contas criadas pelo administrador | Registra as próprias atividades, etapas e descansos; gera o próprio relatório com campos de assinatura |
 
-| Modo | Endereço | Quem usa | O que pode fazer |
-|---|---|---|---|
-| **Administrador** | `index.php?r=admin` | Somente o responsável pelo diário (protegido por senha) | Propor atividades, iniciar/concluir fases, editar e excluir registros, trocar a senha |
-| **Consulta** | `index.php` (raiz) | Diretor e demais interessados (sem senha) | Visualizar, filtrar, exportar XLS e PDF e imprimir |
+Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca a própria senha no painel ("Trocar minha senha"). Somente o administrador cria contas novas (perfil professor), definindo **nome, RM (registro de matrícula), usuário e as etapas de trabalho** conforme a função — ex.: "Planejamento / Execução / Verificação e ajustes / Conclusão e registro" — em qualquer quantidade, nome e peso.
 
-### Previsão automática das fases
+## Funcionalidades
 
-Ao propor uma atividade, o administrador informa **título, data, horário de início e duração estimada**. O sistema preenche automaticamente a **previsão de início e término de cada fase**, distribuindo a duração pelos pesos configurados:
+### Apontamentos
+- Ao propor uma atividade (título, data, início e duração estimada), o sistema preenche automaticamente a **previsão de início e término de cada etapa**, distribuindo a duração pelos pesos do modelo do professor.
+- Botões **Iniciar/Concluir** registram os horários reais de cada etapa; edição manual disponível.
+- **Descansos**: registro do horário de almoço e/ou janta por dia, exibidos no diário e descontados das horas do relatório.
 
-1. Planejamento — 15%
-2. Execução — 55%
-3. Verificação e ajustes — 20%
-4. Conclusão e registro — 10%
+### Diário
+- Filtros por professor (gestão/admin), período (hoje/semana/mês/tudo ou datas livres) e busca.
+- Indicadores: atividades, concluídas, em andamento, horas registradas, descanso e dias de trabalho.
+- Exportação XLS com uma linha por etapa (inclui professor e RM).
 
-As fases e os pesos podem ser ajustados livremente em cada atividade antes de registrar. Durante o trabalho, os botões **Iniciar** e **Concluir** registram os horários reais de cada fase (também é possível editá-los manualmente).
-
-### Identidade visual
-
-Interface no padrão visual CECAPE / AutoriaSCS: tema escuro (navy `#0b1628`) com acentos em ciano e laranja, tipografia Inter, cartões de indicadores coloridos, badges de status e rodapé institucional. A barra superior e a tela de login exibem as logos SEEDUC, AutoriaSCS e CECAPE, servidas de `https://cecapescs.com.br/logos` (o caminho pode ser alterado por `LOGO_BASE` no `config.local.php`). A impressão e o PDF são convertidos automaticamente para tema claro, próprio para papel.
-
-### Consulta e exportação
-
-- Filtros por período (hoje, semana, mês, tudo ou datas livres) e busca por texto.
-- Resumo com total de atividades, concluídas, em andamento, horas registradas e dias de trabalho.
-- Exportação para **XLS**, **PDF** e **impressão** com layout próprio.
+### Relatórios (com assinaturas)
+- **Simplificado**: uma linha por dia com início e término do trabalho apontado, descansos e horas trabalhadas líquidas. Se o dia tem registros reais, os horários exibidos são somente os reais; dias sem registro real usam a previsão, marcados com `*`.
+- **Detalhado**: todas as atividades e etapas do período, com previsão × real.
+- Ambos saem com **campos de assinatura**: Maiberte Brogliato (Direção · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
+- Impressão em layout claro de documento; PDF gerado no navegador (jsPDF), com fallback para a impressão.
 
 ## Arquitetura (MVC)
 
-Aplicação PHP 8+ com PDO/SQLite em estrutura MVC com front controller único:
+PHP 8+ com PDO/SQLite, front controller único:
 
 ```
-index.php                     Front controller — único ponto de entrada (rotas via ?r=...)
-.htaccess                     Bloqueia app/ e data/, URLs amigáveis (Apache)
-nginx.conf.example            Blocos equivalentes para VPS com Nginx
-assets/                       CSS e JavaScript (públicos)
-data/                         Banco SQLite com nome aleatório (criado automaticamente)
+index.php                     Front controller (rotas via ?r=...)
+.htaccess                     Bloqueia app/ e data/ (Apache); nginx.conf.example p/ Nginx
+assets/                       CSS e JavaScript
+data/                         Banco SQLite com nome aleatório (criado no 1º acesso)
 app/
-├── bootstrap.php             Autoloader PSR-4 e helpers (escape de saída, URLs)
-├── Config/config.php         Configurações (fuso, limites, fases padrão, logos)
-├── Config/config.local.php.example  Ajustes por servidor (banco fora da raiz web, LOGO_BASE)
-├── Core/
-│   ├── Router.php            Mapeamento método+rota → controller/ação
-│   ├── Controller.php        Base: respostas JSON, corpo da requisição, guardas
-│   ├── View.php              Renderização de templates com layout
-│   ├── Database.php          PDO singleton + migrações (schema criado no 1º acesso)
-│   ├── Session.php           Sessão endurecida (cookie restrito, expiração, regeneração)
-│   └── Csrf.php              Emissão e validação de token CSRF
+├── bootstrap.php             Autoloader e helpers
+├── Config/config.php         Configurações (perfis, contas iniciais, direção, logos)
+├── Core/                     Router, Controller, View, Database, Session, Csrf
 ├── Controllers/
-│   ├── DiarioController.php  Página de consulta
-│   ├── AdminController.php   Página de administração
-│   └── ApiController.php     API JSON (leitura pública; escrita autenticada)
-├── Models/
-│   ├── Activity.php          Atividades + cálculo da previsão das fases
-│   ├── Phase.php             Horários reais das fases
-│   ├── Setting.php           Configurações persistidas (hash da senha)
-│   └── LoginAttempt.php      Controle de tentativas de login
-└── Views/
-    ├── layouts/main.php      Layout base (cabeçalho, meta CSRF, assets)
-    ├── diario/index.php      Modo consulta
-    ├── admin/index.php       Modo administrador (login, formulário, troca de senha)
-    └── partials/board.php    Painel compartilhado (resumo, filtros, lista)
+│   ├── PanelController.php   Login (form nativo + redirect) e painel por perfil
+│   └── ApiController.php     API JSON (sessão, apontamentos, descansos, contas)
+├── Models/                   User, Activity, Phase, Pausa, Setting, LoginAttempt
+└── Views/                    Layout, login e painel (abas por perfil)
 ```
+
+Banco: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `breaks`, `login_attempts`. Migração automática: banco antigo de usuário único ganha a coluna `user_id`, as atividades existentes passam para o admin e a senha já cadastrada é preservada.
 
 ## Segurança
 
-- **PDO com prepared statements** em todas as consultas (`ATTR_EMULATE_PREPARES` desativado).
-- **CSRF**: toda requisição de escrita exige o token da sessão no cabeçalho `X-CSRF-Token`.
-- **Força bruta**: 5 senhas erradas em 15 minutos bloqueiam novas tentativas do IP.
-- **Sessão**: cookie `HttpOnly` + `SameSite=Lax` + `Secure` (em HTTPS), restrito ao diretório da aplicação; `session_regenerate_id` no login (contra fixação); expiração por inatividade (8h).
-- **Senha**: hash `password_hash`/bcrypt armazenado no banco; troca autenticada pelo próprio painel (exige a senha atual, mínimo de 8 caracteres); re-hash automático quando o algoritmo padrão do PHP evoluir.
-- **Escape de saída** em todas as views (`e()`) e no front-end (`esc()`); validação e limites de tamanho em todas as entradas.
-- **Cabeçalhos**: Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy.
-- **Código e dados inacessíveis**, com defesa em camadas que funciona em Apache e Nginx:
-  - `.htaccess` nega `app/` e `data/` (Apache com AllowOverride);
-  - `nginx.conf.example` traz os blocos equivalentes para Nginx;
-  - todo arquivo PHP da aplicação sai vazio se chamado diretamente (guarda `APP_RUNNING`);
-  - o arquivo do banco recebe **nome aleatório** não adivinhável por URL (registrado em `data/dbname.php`, que também sai vazio via web), e `index.html` vazios impedem listagem de diretório;
-  - opcionalmente, `config.local.php` move o banco para **fora da raiz web** (recomendado em VPS).
-- **Erros** nunca exibidos ao visitante (registrados no log do servidor).
+- Login único obrigatório (nenhum dado é público); autorização por perfil em toda a API; cada professor só escreve nos próprios registros.
+- Login/logout por formulário nativo com redirect do servidor (funciona sem JavaScript) + CSRF em toda escrita (cabeçalho `X-CSRF-Token` ou campo `_csrf`).
+- Bloqueio de força bruta (5 falhas/15 min por IP); senhas bcrypt com re-hash automático; sessão `HttpOnly`/`SameSite`/`Secure`, regenerada no login, expirada por inatividade.
+- PDO com prepared statements; validação e limites em todas as entradas; erros só no log; cabeçalhos CSP, X-Frame-Options etc.; `app/` e `data/` inacessíveis via web (`.htaccess` + guarda `APP_RUNNING` + nome de banco aleatório).
+- Front-end resiliente: fontes e bibliotecas de exportação carregam sem bloquear o painel (CDN fora do ar não trava o sistema).
 
-## Instalação em VPS (cecapescs.com.br/diariobordo)
+## Instalação (HostGator ou similar)
 
-1. Crie a pasta `diariobordo` dentro do **document root do domínio** `cecapescs.com.br` e envie todos os arquivos do projeto para ela (via git clone, SFTP ou painel — preserve os `.htaccess`).
-2. Garanta PHP 8+ com SQLite: `php -v` e `php -m | grep -i sqlite` (em Debian/Ubuntu: `sudo apt install php-sqlite3`).
-3. Dê permissão de escrita na pasta `data/` ao usuário do PHP (ex.: `chown -R www-data:www-data diariobordo` ou `chmod 775 diariobordo/data`).
-4. **Se o servidor for Nginx** (ou Apache com AllowOverride desativado), aplique os blocos de `nginx.conf.example` na configuração do domínio e recarregue o serviço.
-5. (Recomendado) Copie `app/Config/config.local.php.example` para `config.local.php` e aponte o banco para fora da raiz web.
-6. Acesse `https://cecapescs.com.br/diariobordo/index.php?r=admin`, entre com a senha inicial **cecape2026** e **troque-a imediatamente** em "Trocar senha do administrador".
-7. Verifique a proteção: `https://cecapescs.com.br/diariobordo/data/` e `.../diariobordo/app/Config/config.php` devem retornar erro ou página vazia.
-8. Compartilhe com a direção apenas `https://cecapescs.com.br/diariobordo/` (modo consulta).
+1. Envie todos os arquivos para a pasta do domínio (ex.: `.../diariobordo`), preservando os `.htaccess`.
+2. Garanta PHP 8+ no MultiPHP Manager.
+3. Acesse `https://cecapescs.com.br/diariobordo/` — o banco e as três contas iniciais são criados sozinhos.
+4. Entre como `flavio` / **cecape2026**, troque sua senha e crie as contas de professor.
+5. Informe Maiberte (`maiberte`) e Therezinha (`therezinha`) — senha inicial **cecape2026**, a trocar no primeiro acesso.
 
-O banco SQLite é criado automaticamente no primeiro acesso — não é preciso configurar MySQL nem editar arquivos.
-
-Para testar localmente:
-
-```bash
-php -S localhost:8000
-# consulta: http://localhost:8000/index.php
-# admin:    http://localhost:8000/index.php?r=admin
-```
+Para testar localmente: `php -S localhost:8000` e abra `http://localhost:8000/index.php`.

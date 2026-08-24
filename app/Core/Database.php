@@ -68,8 +68,20 @@ final class Database
 
     private static function migrate(PDO $pdo): void
     {
+        $pdo->exec('CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            rm TEXT NOT NULL DEFAULT "",
+            role TEXT NOT NULL DEFAULT "professor",
+            phases_json TEXT,
+            password_hash TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )');
         $pdo->exec('CREATE TABLE IF NOT EXISTS activities (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
             title TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT "",
             category TEXT NOT NULL DEFAULT "",
@@ -88,6 +100,14 @@ final class Database
             real_start TEXT,
             real_end TEXT
         )');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS breaks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            type TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL
+        )');
         $pdo->exec('CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -97,12 +117,42 @@ final class Database
             ip TEXT NOT NULL,
             attempted_at TEXT NOT NULL
         )');
-        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)');
+        // Migração de banco antigo (single-user): adiciona a coluna user_id
+        // antes dos índices que dependem dela
+        $cols = array_column($pdo->query('PRAGMA table_info(activities)')->fetchAll(), 'name');
+        if (!in_array('user_id', $cols, true)) {
+            $pdo->exec('ALTER TABLE activities ADD COLUMN user_id INTEGER');
+        }
+
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_activities_user_date ON activities(user_id, date)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_phases_activity ON phases(activity_id)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_breaks_user ON breaks(user_id, date)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at)');
 
-        // Semeia a senha do administrador no primeiro acesso
-        $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (:k, :v)');
-        $stmt->execute([':k' => 'admin_password_hash', ':v' => DEFAULT_ADMIN_PASSWORD_HASH]);
+        // Semeia as contas iniciais no primeiro acesso
+        if ((int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0) {
+            // O admin herda a senha já cadastrada no banco antigo, se houver
+            $legacy = $pdo->query('SELECT value FROM settings WHERE key = "admin_password_hash"')->fetchColumn();
+            $ins = $pdo->prepare('INSERT INTO users (username, name, rm, role, phases_json, password_hash, created_at)
+                                  VALUES (:u, :n, "", :r, :p, :h, :c)');
+            foreach (SEED_USERS as $seed) {
+                $isAdmin = $seed['role'] === 'admin';
+                $ins->execute([
+                    ':u' => $seed['username'],
+                    ':n' => $seed['name'],
+                    ':r' => $seed['role'],
+                    ':p' => $seed['role'] === 'gestor' ? null : json_encode(DEFAULT_PHASES, JSON_UNESCAPED_UNICODE),
+                    ':h' => ($isAdmin && $legacy) ? (string)$legacy : DEFAULT_ADMIN_PASSWORD_HASH,
+                    ':c' => date('Y-m-d H:i:s'),
+                ]);
+            }
+        }
+
+        // Atividades antigas sem dono passam a pertencer ao admin
+        $adminId = $pdo->query('SELECT id FROM users WHERE role = "admin" ORDER BY id LIMIT 1')->fetchColumn();
+        if ($adminId) {
+            $pdo->prepare('UPDATE activities SET user_id = :a WHERE user_id IS NULL')
+                ->execute([':a' => (int)$adminId]);
+        }
     }
 }

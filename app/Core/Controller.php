@@ -29,10 +29,27 @@ abstract class Controller
         return is_array($data) ? $data : [];
     }
 
+    protected function requireLogin(): void
+    {
+        if (!Session::isLogged()) {
+            $this->json(['error' => 'Faça login para continuar.'], 401);
+        }
+    }
+
     protected function requireAdmin(): void
     {
+        $this->requireLogin();
         if (!Session::isAdmin()) {
-            $this->json(['error' => 'Acesso restrito ao administrador.'], 401);
+            $this->json(['error' => 'Acesso restrito ao administrador.'], 403);
+        }
+    }
+
+    /** Perfis que registram apontamentos (admin e professor). */
+    protected function requireProfessorCapable(): void
+    {
+        $this->requireLogin();
+        if (Session::role() === 'gestor') {
+            $this->json(['error' => 'O perfil de gestão é somente de consulta.'], 403);
         }
     }
 

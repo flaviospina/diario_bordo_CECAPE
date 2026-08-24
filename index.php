@@ -8,9 +8,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/app/bootstrap.php';
 
-use App\Controllers\AdminController;
 use App\Controllers\ApiController;
-use App\Controllers\DiarioController;
+use App\Controllers\PanelController;
 use App\Core\Router;
 use App\Core\Session;
 
@@ -36,25 +35,35 @@ Session::start();
 
 $router = new Router();
 
-// Páginas
-$router->add('GET', '', DiarioController::class, 'index');
-$router->add('GET', 'admin', AdminController::class, 'index');
+// Painel único (login + área por perfil)
+$router->add('GET', '', PanelController::class, 'index');
+$router->add('GET', 'admin', PanelController::class, 'index'); // endereço antigo
+$router->add('POST', 'login', PanelController::class, 'login');
+$router->add('POST', 'logout', PanelController::class, 'logout');
 
-// API — leitura pública
-$router->add('GET', 'api/list', ApiController::class, 'list');
+// API — sessão
 $router->add('GET', 'api/me', ApiController::class, 'me');
-
-// API — autenticação
 $router->add('POST', 'api/login', ApiController::class, 'login');
 $router->add('POST', 'api/logout', ApiController::class, 'logout');
 $router->add('POST', 'api/password', ApiController::class, 'changePassword');
 
-// API — escrita (somente administrador)
+// API — consulta (autenticada)
+$router->add('GET', 'api/list', ApiController::class, 'list');
+$router->add('GET', 'api/professors', ApiController::class, 'professors');
 $router->add('GET', 'api/default-phases', ApiController::class, 'defaultPhases');
+
+// API — apontamentos (admin e professores, somente os próprios)
 $router->add('POST', 'api/create', ApiController::class, 'create');
 $router->add('POST', 'api/update-activity', ApiController::class, 'updateActivity');
 $router->add('POST', 'api/delete', ApiController::class, 'delete');
 $router->add('POST', 'api/phase', ApiController::class, 'phase');
+$router->add('POST', 'api/break-create', ApiController::class, 'breakCreate');
+$router->add('POST', 'api/break-delete', ApiController::class, 'breakDelete');
+
+// API — contas (somente administrador)
+$router->add('GET', 'api/users', ApiController::class, 'users');
+$router->add('POST', 'api/user-create', ApiController::class, 'userCreate');
+$router->add('POST', 'api/user-update', ApiController::class, 'userUpdate');
 
 $route = Router::currentRoute();
 try {

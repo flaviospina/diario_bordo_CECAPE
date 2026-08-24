@@ -10,11 +10,19 @@ use DateTime;
 
 final class Activity
 {
-    /** Lista atividades (com fases e status derivado) filtradas por período e busca. */
-    public static function allWithPhases(?string $from, ?string $to, ?string $q): array
+    public static function find(int $id): ?array
     {
-        $sql = 'SELECT * FROM activities WHERE 1=1';
-        $params = [];
+        $stmt = Database::pdo()->prepare('SELECT * FROM activities WHERE id = :id');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /** Lista as atividades de um professor (com fases e status derivado). */
+    public static function allWithPhases(int $userId, ?string $from, ?string $to, ?string $q): array
+    {
+        $sql = 'SELECT * FROM activities WHERE user_id = :uid';
+        $params = [':uid' => $userId];
         if ($from) {
             $sql .= ' AND date >= :from';
             $params[':from'] = $from;
@@ -46,14 +54,15 @@ final class Activity
     }
 
     /** Cria a atividade e suas fases com a previsão já calculada. */
-    public static function create(array $meta, array $phasePreviews): int
+    public static function create(int $userId, array $meta, array $phasePreviews): int
     {
         $pdo = Database::pdo();
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare('INSERT INTO activities (title, description, category, date, prev_start, prev_end, created_at)
-                                   VALUES (:t, :d, :c, :dt, :ps, :pe, :ca)');
+            $stmt = $pdo->prepare('INSERT INTO activities (user_id, title, description, category, date, prev_start, prev_end, created_at)
+                                   VALUES (:u, :t, :d, :c, :dt, :ps, :pe, :ca)');
             $stmt->execute([
+                ':u' => $userId,
                 ':t' => $meta['title'],
                 ':d' => $meta['description'],
                 ':c' => $meta['category'],

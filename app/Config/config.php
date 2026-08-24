@@ -31,6 +31,27 @@ const LOGOS = [
     ['file' => 'logo-cecape-new.png', 'alt' => 'CECAPE'],
 ];
 
+// Direção que assina os relatórios
+const DIRECTOR_NAME = 'Maiberte Brogliato';
+const DIRECTOR_ROLE = 'Direção · CECAPE';
+
+// Perfis de acesso
+const ROLE_LABELS = ['admin' => 'Administrador', 'gestor' => 'Gestão', 'professor' => 'Professor'];
+
+// Tipos de descanso registráveis no dia de trabalho
+const BREAK_TYPES = ['almoco' => 'Almoço', 'janta' => 'Janta'];
+
+/*
+ * Contas criadas automaticamente no primeiro acesso (senha inicial: cecape2026).
+ * Cada pessoa deve trocar a própria senha no painel após o primeiro login.
+ * O admin (flavio) herda a senha que já estiver cadastrada no banco.
+ */
+const SEED_USERS = [
+    ['username' => 'flavio',     'name' => 'Prof. Flávio Spina', 'role' => 'admin'],
+    ['username' => 'maiberte',   'name' => 'Maiberte Brogliato', 'role' => 'gestor'],
+    ['username' => 'therezinha', 'name' => 'Therezinha',         'role' => 'gestor'],
+];
+
 /**
  * Hash da senha inicial do administrador (senha padrão: cecape2026).
  * Usado apenas para semear o banco no primeiro acesso; depois disso a senha
