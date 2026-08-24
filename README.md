@@ -19,7 +19,7 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 ### Apontamentos
 - Ao propor uma atividade (título, data, início e duração estimada), o sistema preenche automaticamente a **previsão de início e término de cada etapa**, distribuindo a duração pelos pesos do modelo do professor.
 - Botões **Iniciar/Concluir** registram os horários reais de cada etapa; edição manual disponível.
-- **Descansos**: registro do horário de almoço e/ou janta por dia, exibidos no diário e descontados das horas do relatório.
+- **Descansos**: registro do horário de almoço e/ou janta por dia — janela realmente bloqueada: a previsão das etapas pula o intervalo, nenhum registro (automático ou manual) é aceito dentro dele, descansos não podem se sobrepor e todas as horas (diário, indicadores e relatórios) descontam a sobreposição com o descanso.
 
 ### Diário
 - Filtros por professor (gestão/admin), período (hoje/semana/mês/tudo ou datas livres) e busca.

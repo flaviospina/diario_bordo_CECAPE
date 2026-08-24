@@ -145,7 +145,9 @@ final class ApiController extends Controller
         $me = User::find((int)Session::userId());
         $phasesIn = $this->sanitizePhases($data['phases'] ?? null) ?: User::phases($me);
 
-        $previews = Activity::buildPhasePreviews($date, $startTime, $duration, $phasesIn);
+        // A previsão respeita os descansos já registrados para o dia
+        $breaks = Pausa::forUser((int)Session::userId(), $date, $date);
+        $previews = Activity::buildPhasePreviews($date, $startTime, $duration, $phasesIn, $breaks);
         $id = Activity::create(
             (int)Session::userId(),
             ['title' => $title, 'description' => $description, 'category' => $category, 'date' => $date],
@@ -198,6 +200,10 @@ final class ApiController extends Controller
         }
 
         $now = date('Y-m-d H:i');
+        // Durante o descanso não é possível registrar nada
+        if (in_array($op, ['start', 'finish'], true)) {
+            $this->rejectIfInBreak($now, 'Você está em horário de descanso');
+        }
         switch ($op) {
             case 'start':
                 Phase::setTimes($id, ['real_start' => $now]);
@@ -207,6 +213,7 @@ final class ApiController extends Controller
                 if (empty($phase['real_start'])) {
                     $set['real_start'] = $phase['prev_start'] ?: $now;
                 }
+                $this->assertTimeOrder($phase, $set);
                 Phase::setTimes($id, $set);
                 break;
             case 'undo':
@@ -220,9 +227,13 @@ final class ApiController extends Controller
                         if ($v !== '' && !$this->isValidDateTime($v)) {
                             $this->json(['error' => 'Horário inválido: use o formato AAAA-MM-DD HH:MM.'], 422);
                         }
+                        if ($v !== '') {
+                            $this->rejectIfInBreak($v, 'O horário informado cai no descanso');
+                        }
                         $set[$f] = $v === '' ? null : $v;
                     }
                 }
+                $this->assertTimeOrder($phase, $set);
                 Phase::setTimes($id, $set);
                 break;
             default:
@@ -245,6 +256,13 @@ final class ApiController extends Controller
         if (!$this->isValidDate($date) || !isset(BREAK_TYPES[$type])
             || !$this->isValidTime($start) || !$this->isValidTime($end) || $end <= $start) {
             $this->json(['error' => 'Informe data, tipo e um intervalo válido (término após o início).'], 422);
+        }
+        // Descansos do mesmo dia não podem se sobrepor
+        foreach (Pausa::forUser((int)Session::userId(), $date, $date) as $b) {
+            if ($start < $b['end_time'] && $end > $b['start_time']) {
+                $label = BREAK_TYPES[$b['type']] ?? 'Descanso';
+                $this->json(['error' => "Conflito com um descanso já registrado ($label {$b['start_time']}–{$b['end_time']})."], 422);
+            }
         }
         $id = Pausa::create((int)Session::userId(), $date, $type, $start, $end);
         $this->json(['ok' => true, 'id' => $id]);
@@ -360,6 +378,29 @@ final class ApiController extends Controller
         }
         $target = User::find($requested);
         return ($target && $target['role'] !== 'gestor') ? $target : null;
+    }
+
+    /** O término real deve ser depois do início real. */
+    private function assertTimeOrder(array $phase, array $set): void
+    {
+        $eff = array_merge($phase, $set);
+        if (!empty($eff['real_start']) && !empty($eff['real_end']) && $eff['real_end'] <= $eff['real_start']) {
+            $this->json(['error' => 'O término real deve ser depois do início real da etapa.'], 422);
+        }
+    }
+
+    /** Recusa a operação se o horário cair dentro de um descanso do usuário. */
+    private function rejectIfInBreak(string $datetime, string $prefix): void
+    {
+        $date = substr($datetime, 0, 10);
+        foreach (Pausa::forUser((int)Session::userId(), $date, $date) as $b) {
+            $s = "$date {$b['start_time']}";
+            $e = "$date {$b['end_time']}";
+            if ($datetime >= $s && $datetime < $e) {
+                $label = BREAK_TYPES[$b['type']] ?? 'Descanso';
+                $this->json(['error' => "$prefix ($label {$b['start_time']}–{$b['end_time']}). Nenhum registro é permitido neste intervalo."], 422);
+            }
+        }
     }
 
     private function ownActivityOr404(int $id): array

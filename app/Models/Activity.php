@@ -98,10 +98,13 @@ final class Activity
     }
 
     /**
-     * Gera a previsão de cada fase distribuindo a duração total pelos pesos,
+     * Gera a previsão de cada etapa distribuindo a duração total pelos pesos,
      * em sequência a partir do horário de início informado.
+     * Os descansos registrados no dia (almoço/janta) são janelas bloqueadas:
+     * a agenda pula esses intervalos — nenhuma etapa é prevista dentro deles.
      */
-    public static function buildPhasePreviews(string $date, string $startTime, int $durationMin, array $phases): array
+    public static function buildPhasePreviews(string $date, string $startTime, int $durationMin,
+                                              array $phases, array $breaks = []): array
     {
         $totalWeight = 0;
         foreach ($phases as $p) {
@@ -115,24 +118,72 @@ final class Activity
             $totalWeight = count($phases);
         }
 
+        // Janelas de descanso do dia, em ordem
+        $windows = [];
+        foreach ($breaks as $b) {
+            if (($b['date'] ?? '') === $date) {
+                $windows[] = [new DateTime("$date {$b['start_time']}"), new DateTime("$date {$b['end_time']}")];
+            }
+        }
+        usort($windows, fn($a, $b) => $a[0] <=> $b[0]);
+
+        // Move o instante para fora de qualquer descanso
+        $skip = function (DateTime $t) use ($windows): DateTime {
+            $moved = true;
+            while ($moved) {
+                $moved = false;
+                foreach ($windows as [$s, $e]) {
+                    if ($t >= $s && $t < $e) {
+                        $t = clone $e;
+                        $moved = true;
+                    }
+                }
+            }
+            return $t;
+        };
+        // Avança N minutos de trabalho, pulando os descansos
+        $advance = function (DateTime $t, int $mins) use ($windows, $skip): DateTime {
+            $t = $skip(clone $t);
+            $rem = $mins;
+            while ($rem > 0) {
+                $next = null;
+                foreach ($windows as [$s]) {
+                    if ($s > $t && ($next === null || $s < $next)) {
+                        $next = $s;
+                    }
+                }
+                if ($next === null) {
+                    $t->modify("+{$rem} minutes");
+                    $rem = 0;
+                } else {
+                    $chunk = min($rem, intdiv($next->getTimestamp() - $t->getTimestamp(), 60));
+                    $t->modify("+{$chunk} minutes");
+                    $rem -= $chunk;
+                    $t = $skip($t);
+                }
+            }
+            return $t;
+        };
+
         $cursor = new DateTime("$date $startTime");
         $out = [];
         $n = count($phases);
         $used = 0;
         foreach (array_values($phases) as $i => $p) {
-            // A última fase recebe o restante para fechar exatamente a duração total
+            // A última etapa recebe o restante para fechar exatamente a duração total
             $mins = ($i === $n - 1)
                 ? $durationMin - $used
                 : (int)round($durationMin * ((float)$p['weight'] / $totalWeight));
             $mins = max(1, $mins);
             $used += $mins;
-            $start = clone $cursor;
-            $cursor->modify("+{$mins} minutes");
+            $start = $skip(clone $cursor);
+            $end = $advance(clone $start, $mins);
+            $cursor = clone $end;
             $out[] = [
                 'name' => trim((string)$p['name']),
                 'ord' => $i,
                 'prev_start' => $start->format('Y-m-d H:i'),
-                'prev_end' => $cursor->format('Y-m-d H:i'),
+                'prev_end' => $end->format('Y-m-d H:i'),
             ];
         }
         return $out;

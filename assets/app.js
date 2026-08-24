@@ -13,7 +13,7 @@ let STATE = {
   role: null, userId: 0, userName: '', userRm: '',
   director: '', directorRole: '',
   professors: [], profId: 0, professor: null,
-  activities: [], breaks: [],
+  activities: [], breaks: [], formBreaks: [],
   phasesTemplate: [], reportData: null, reportType: 'simplificado'
 };
 
@@ -168,10 +168,32 @@ async function load() {
   renderList();
 }
 
-function realDuration(a) {
+/** Minutos de um intervalo que caem dentro dos descansos do dia. */
+function breakOverlapMin(startDt, endDt, breaks) {
+  if (!startDt || !endDt || !breaks?.length) return 0;
+  const s = new Date(startDt.replace(' ', 'T'));
+  const e = new Date(endDt.replace(' ', 'T'));
+  let total = 0;
+  for (const b of breaks) {
+    const bs = new Date(`${b.date}T${b.start_time}`);
+    const be = new Date(`${b.date}T${b.end_time}`);
+    const o = Math.min(e, be) - Math.max(s, bs);
+    if (o > 0) total += Math.round(o / 60000);
+  }
+  return total;
+}
+
+/** Duração real líquida de um intervalo, descontando os descansos. */
+function realNetMinutes(startDt, endDt, breaks) {
+  const m = minutesBetween(startDt, endDt);
+  if (m == null) return null;
+  return Math.max(0, m - breakOverlapMin(startDt, endDt, breaks));
+}
+
+function realDuration(a, breaks) {
   let total = 0, has = false;
   for (const p of a.phases) {
-    const m = minutesBetween(p.real_start, p.real_end);
+    const m = realNetMinutes(p.real_start, p.real_end, breaks);
     if (m != null) { total += m; has = true; }
   }
   return has ? total : null;
@@ -182,7 +204,7 @@ function renderStats() {
   const done = acts.filter(a => a.status === 'concluida').length;
   const inProgress = acts.filter(a => a.status === 'em_andamento').length;
   let totalMin = 0;
-  acts.forEach(a => { totalMin += realDuration(a) || 0; });
+  acts.forEach(a => { totalMin += realDuration(a, STATE.breaks) || 0; });
   const restMin = STATE.breaks.reduce((s, b) => s + minutesHM(b.start_time, b.end_time), 0);
   const days = new Set(acts.map(a => a.date)).size;
   $('#stats').innerHTML = `
@@ -197,7 +219,7 @@ function renderStats() {
 function phaseRowHtml(p, editable) {
   const started = !!p.real_start, done = !!p.real_end;
   const cls = done ? 'done' : (started ? 'started' : '');
-  const realDur = minutesBetween(p.real_start, p.real_end);
+  const realDur = realNetMinutes(p.real_start, p.real_end, STATE.breaks);
   let actions = '';
   if (editable) {
     if (!started && !done) {
@@ -220,8 +242,8 @@ function phaseRowHtml(p, editable) {
 }
 
 function activityCard(a, editable) {
-  const dur = realDuration(a);
-  const prevDur = minutesBetween(a.prev_start, a.prev_end);
+  const dur = realDuration(a, STATE.breaks);
+  const prevDur = realNetMinutes(a.prev_start, a.prev_end, STATE.breaks);
   return `
   <article class="activity st-${a.status}" data-id="${a.id}">
     <div class="activity-head">
@@ -260,7 +282,7 @@ function renderList() {
   wrap.innerHTML = days.map(day => {
     const list = acts.filter(a => a.date === day);
     const dayBreaks = STATE.breaks.filter(b => b.date === day);
-    const dayMin = list.reduce((s, a) => s + (realDuration(a) || 0), 0);
+    const dayMin = list.reduce((s, a) => s + (realDuration(a, STATE.breaks) || 0), 0);
     return `
     <section class="day-group">
       <div class="day-head">
@@ -334,6 +356,7 @@ function bindListEvents() {
     try {
       await api('break-delete', { body: { id: btn.dataset.break } });
       await load();
+      await loadFormBreaks();
       toast('Descanso removido.');
     } catch (e) { toast(e.message); }
   }));
@@ -358,7 +381,7 @@ function exportRows() {
         'Término (Previsão)': fmtDateTimeShort(p.prev_end),
         'Início (Real)': fmtDateTimeShort(p.real_start),
         'Término (Real)': fmtDateTimeShort(p.real_end),
-        'Duração real': fmtDuration(minutesBetween(p.real_start, p.real_end)),
+        'Duração real': fmtDuration(realNetMinutes(p.real_start, p.real_end, STATE.breaks)),
         'Descrição': a.description || ''
       });
     });
@@ -415,10 +438,44 @@ function editorPhases(containerSel) {
   })).filter(p => p.name);
 }
 
-/* Espelha o cálculo do servidor: distribui a duração pelos pesos, em sequência. */
-function computePreview(date, startTime, duration, phases) {
+/* Espelha o cálculo do servidor: distribui a duração pelos pesos, em
+   sequência, pulando as janelas de descanso registradas para o dia. */
+function computePreview(date, startTime, duration, phases, breaks = []) {
   let total = phases.reduce((s, p) => s + Math.max(0, p.weight), 0);
   if (total <= 0) { phases = phases.map(p => ({ ...p, weight: 1 })); total = phases.length; }
+
+  const windows = breaks
+    .filter(b => b.date === date)
+    .map(b => [new Date(`${date}T${b.start_time}`), new Date(`${date}T${b.end_time}`)])
+    .sort((a, b) => a[0] - b[0]);
+
+  const skip = t => {
+    let moved = true;
+    while (moved) {
+      moved = false;
+      for (const [s, e] of windows) {
+        if (t >= s && t < e) { t = new Date(e); moved = true; }
+      }
+    }
+    return t;
+  };
+  const advance = (t, mins) => {
+    t = skip(new Date(t));
+    let rem = mins;
+    while (rem > 0) {
+      let next = null;
+      for (const [s] of windows) if (s > t && (!next || s < next)) next = s;
+      if (!next) { t = new Date(t.getTime() + rem * 60000); rem = 0; }
+      else {
+        const chunk = Math.min(rem, Math.round((next - t) / 60000));
+        t = new Date(t.getTime() + chunk * 60000);
+        rem -= chunk;
+        t = skip(t);
+      }
+    }
+    return t;
+  };
+
   let cursor = new Date(`${date}T${startTime}`);
   let used = 0;
   return phases.map((p, i) => {
@@ -427,10 +484,22 @@ function computePreview(date, startTime, duration, phases) {
       : Math.round(duration * (p.weight / total));
     mins = Math.max(1, mins);
     used += mins;
-    const start = new Date(cursor);
-    cursor = new Date(cursor.getTime() + mins * 60000);
-    return { name: p.name, start, end: new Date(cursor), mins };
+    const start = skip(new Date(cursor));
+    const end = advance(start, mins);
+    cursor = new Date(end);
+    return { name: p.name, start, end, mins };
   });
+}
+
+/** Descansos do dia selecionado no formulário (para a previsão pular). */
+async function loadFormBreaks() {
+  const d = $('#a-date')?.value;
+  if (!d) { STATE.formBreaks = []; return; }
+  try {
+    const data = await api('list', { qs: `from=${d}&to=${d}&user_id=${STATE.userId}` });
+    STATE.formBreaks = data.breaks;
+  } catch { STATE.formBreaks = []; }
+  renderPreview();
 }
 
 function renderPreview() {
@@ -445,9 +514,15 @@ function renderPreview() {
     return;
   }
   const hhmm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  const items = computePreview(date, time, duration, phases);
-  box.innerHTML = '<span>Previsão gerada automaticamente: </span>' +
+  const dayBreaks = STATE.formBreaks.filter(b => b.date === date);
+  const items = computePreview(date, time, duration, phases, dayBreaks);
+  let html = '<span>Previsão gerada automaticamente: </span>' +
     items.map(p => `<b>${esc(p.name)}</b> ${hhmm(p.start)}–${hhmm(p.end)}`).join(' · ');
+  if (dayBreaks.length) {
+    html += `<br><span class="preview-break">☕ Respeita o descanso: ${dayBreaks.map(b =>
+      `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`).join(' · ')}</span>`;
+  }
+  box.innerHTML = html;
 }
 
 function resetPhaseEditor() {
@@ -492,10 +567,11 @@ async function submitBreak(ev) {
   if (!body.date || !body.start || !body.end) return toast('Preencha data, início e término do descanso.');
   try {
     await api('break-create', { body });
-    toast('Descanso registrado.');
+    toast('Descanso registrado — a previsão de novas atividades vai pular este intervalo.');
     $('#b-start').value = '';
     $('#b-end').value = '';
     await load();
+    await loadFormBreaks();
   } catch (e) { toast(e.message); }
 }
 
@@ -706,15 +782,13 @@ function simplifiedRows(data) {
     const list = data.activities.filter(a => a.date === day);
     const dayBreaks = data.breaks.filter(b => b.date === day);
     const { inicio, fim, allReal } = dayBounds(list);
-    const restMin = dayBreaks.reduce((s, b) => s + minutesHM(b.start_time, b.end_time), 0);
-    const bruto = minutesBetween(inicio, fim);
-    const liquido = bruto != null ? Math.max(0, bruto - restMin) : null;
+    // Desconta apenas o descanso que cai dentro do expediente apontado
+    const liquido = realNetMinutes(inicio, fim, dayBreaks);
     return {
       day,
       inicio: inicio ? fmtTime(inicio) : '—',
       fim: fim ? fmtTime(fim) : '—',
       descanso: dayBreaks.map(b => `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`).join('; ') || '—',
-      restMin,
       liquido,
       marcador: allReal ? '' : ' *'
     };
@@ -781,7 +855,7 @@ function buildDetailedHtml(data) {
   const prof = data.professor;
   const days = [...new Set([...data.activities.map(a => a.date), ...data.breaks.map(b => b.date)])].sort();
   let totalMin = 0;
-  data.activities.forEach(a => { totalMin += realDuration(a) || 0; });
+  data.activities.forEach(a => { totalMin += realDuration(a, data.breaks) || 0; });
   const body = days.map(day => {
     const list = data.activities.filter(a => a.date === day);
     const dayBreaks = data.breaks.filter(b => b.date === day);
@@ -798,7 +872,7 @@ function buildDetailedHtml(data) {
               <td>${esc(p.name)}</td>
               <td>${fmtTime(p.prev_start)}</td><td>${fmtTime(p.prev_end)}</td>
               <td>${fmtTime(p.real_start)}</td><td>${fmtTime(p.real_end)}</td>
-              <td>${fmtDuration(minutesBetween(p.real_start, p.real_end))}</td>
+              <td>${fmtDuration(realNetMinutes(p.real_start, p.real_end, data.breaks))}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>`).join('') || '<p class="p-desc">Sem atividades neste dia (apenas descanso registrado).</p>'}
@@ -908,7 +982,7 @@ function exportReportPDF() {
       a.date.split('-').reverse().join('/'), a.title, p.name,
       fmtTime(p.prev_start) + '–' + fmtTime(p.prev_end),
       fmtTime(p.real_start) + '–' + fmtTime(p.real_end),
-      fmtDuration(minutesBetween(p.real_start, p.real_end)),
+      fmtDuration(realNetMinutes(p.real_start, p.real_end, data.breaks)),
       STATUS_LABEL[a.status]
     ])));
     doc.autoTable({
@@ -965,10 +1039,11 @@ async function initPanel() {
     $('#a-start').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     $('#b-date').value = isoDate(now);
     $('#btn-add-phase').addEventListener('click', () => phaseEditorRow($('#phase-editor-rows')));
-    ['#a-date', '#a-start', '#a-duration'].forEach(sel => $(sel).addEventListener('input', renderPreview));
+    ['#a-start', '#a-duration'].forEach(sel => $(sel).addEventListener('input', renderPreview));
+    $('#a-date').addEventListener('input', loadFormBreaks);
     $('#activity-form').addEventListener('submit', submitActivity);
     $('#break-form').addEventListener('submit', submitBreak);
-    renderPreview();
+    await loadFormBreaks();
   }
 
   // Relatórios
