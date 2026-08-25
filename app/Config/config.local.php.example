@@ -10,9 +10,24 @@ defined('APP_RUNNING') or exit;
  */
 
 /*
- * RECOMENDADO EM VPS: guardar o banco de dados FORA da raiz web,
- * em um diretório que o usuário do PHP (www-data etc.) possa escrever.
- * Exemplo:
+ * BANCO MySQL (gerenciável pelo phpMyAdmin).
+ * Crie o banco e o usuário no cPanel (MySQL® Databases), dê TODOS os
+ * privilégios ao usuário no banco e preencha abaixo. Com estas três
+ * primeiras linhas definidas, o sistema usa MySQL; sem elas, usa SQLite.
+ *
+ * Na primeira conexão com o banco MySQL vazio, os dados de uma instalação
+ * SQLite existente em data/ são IMPORTADOS AUTOMATICAMENTE (contas,
+ * atividades, etapas, pausas e descansos); o arquivo .sqlite é renomeado
+ * para .importado-<data> e fica como backup.
+ */
+// define('DB_MYSQL_HOST', 'localhost');
+// define('DB_MYSQL_NAME', 'usuario_diariobordo');   // nome com o prefixo do cPanel
+// define('DB_MYSQL_USER', 'usuario_diario');        // idem
+// define('DB_MYSQL_PASS', 'senha-do-banco');
+
+/*
+ * SQLite em VPS: guardar o banco FORA da raiz web, em um diretório que o
+ * usuário do PHP (www-data etc.) possa escrever. Exemplo:
  *   sudo mkdir -p /var/lib/diariobordo
  *   sudo chown www-data:www-data /var/lib/diariobordo
  */

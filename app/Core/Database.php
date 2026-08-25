@@ -7,6 +7,17 @@ defined('APP_RUNNING') or exit;
 
 use PDO;
 
+/**
+ * Conexão com o banco de dados.
+ *
+ * Driver escolhido pela configuração (app/Config/config.local.php):
+ *  - Com DB_MYSQL_HOST/NAME/USER definidos → MySQL (gerenciável no phpMyAdmin).
+ *  - Sem eles → SQLite em data/ (padrão, zero configuração).
+ *
+ * Na primeira conexão MySQL com banco vazio, os dados de uma instalação
+ * SQLite existente em data/ são importados automaticamente; o arquivo
+ * .sqlite é então renomeado para .importado-<data> e vira backup.
+ */
 final class Database
 {
     private static ?PDO $pdo = null;
@@ -14,28 +25,205 @@ final class Database
     public static function pdo(): PDO
     {
         if (self::$pdo === null) {
-            $path = self::resolvePath();
-            self::$pdo = new PDO('sqlite:' . $path, null, null, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false,
-            ]);
-            self::$pdo->exec('PRAGMA foreign_keys = ON');
-            self::migrate(self::$pdo);
+            self::$pdo = self::isMysql() ? self::connectMysql() : self::connectSqlite();
         }
         return self::$pdo;
     }
 
+    public static function isMysql(): bool
+    {
+        return defined('DB_MYSQL_HOST') && defined('DB_MYSQL_NAME') && defined('DB_MYSQL_USER');
+    }
+
+    /* ================= MySQL ================= */
+
+    private static function connectMysql(): PDO
+    {
+        try {
+            $pdo = new PDO(
+                'mysql:host=' . DB_MYSQL_HOST . ';dbname=' . DB_MYSQL_NAME . ';charset=utf8mb4',
+                DB_MYSQL_USER,
+                defined('DB_MYSQL_PASS') ? DB_MYSQL_PASS : '',
+                [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_EMULATE_PREPARES => false,
+                ]
+            );
+        } catch (\PDOException $e) {
+            error_log('[diario_bordo] Falha na conexão MySQL: ' . $e->getMessage());
+            throw new \RuntimeException(
+                'Não foi possível conectar ao MySQL — confira as credenciais em app/Config/config.local.php.'
+            );
+        }
+        self::migrateMysql($pdo);
+        return $pdo;
+    }
+
+    private static function migrateMysql(PDO $pdo): void
+    {
+        $suffix = ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `users` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `username` VARCHAR(30) NOT NULL UNIQUE,
+            `name` VARCHAR(200) NOT NULL,
+            `rm` VARCHAR(30) NOT NULL DEFAULT \'\',
+            `role` VARCHAR(20) NOT NULL DEFAULT \'professor\',
+            `phases_json` TEXT NULL,
+            `password_hash` VARCHAR(255) NOT NULL,
+            `active` TINYINT NOT NULL DEFAULT 1,
+            `created_at` VARCHAR(19) NOT NULL' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `activities` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `user_id` INT UNSIGNED NULL,
+            `title` VARCHAR(200) NOT NULL,
+            `description` TEXT NULL,
+            `category` VARCHAR(100) NOT NULL DEFAULT \'\',
+            `date` VARCHAR(10) NOT NULL,
+            `prev_start` VARCHAR(16) NULL,
+            `prev_end` VARCHAR(16) NULL,
+            `created_at` VARCHAR(19) NOT NULL,
+            KEY `idx_activities_user_date` (`user_id`, `date`)' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `phases` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `activity_id` INT UNSIGNED NOT NULL,
+            `name` VARCHAR(200) NOT NULL,
+            `ord` INT NOT NULL DEFAULT 0,
+            `prev_start` VARCHAR(16) NULL,
+            `prev_end` VARCHAR(16) NULL,
+            `real_start` VARCHAR(16) NULL,
+            `real_end` VARCHAR(16) NULL,
+            KEY `idx_phases_activity` (`activity_id`),
+            CONSTRAINT `fk_phases_activity` FOREIGN KEY (`activity_id`)
+                REFERENCES `activities` (`id`) ON DELETE CASCADE' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `phase_pauses` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `phase_id` INT UNSIGNED NOT NULL,
+            `start_dt` VARCHAR(16) NOT NULL,
+            `end_dt` VARCHAR(16) NULL,
+            KEY `idx_phase_pauses` (`phase_id`),
+            CONSTRAINT `fk_pauses_phase` FOREIGN KEY (`phase_id`)
+                REFERENCES `phases` (`id`) ON DELETE CASCADE' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `breaks` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `user_id` INT UNSIGNED NOT NULL,
+            `date` VARCHAR(10) NOT NULL,
+            `type` VARCHAR(10) NOT NULL,
+            `start_time` VARCHAR(5) NOT NULL,
+            `end_time` VARCHAR(5) NOT NULL,
+            KEY `idx_breaks_user` (`user_id`, `date`)' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `login_attempts` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `ip` VARCHAR(45) NOT NULL,
+            `attempted_at` VARCHAR(19) NOT NULL,
+            KEY `idx_login_attempts_ip` (`ip`, `attempted_at`)' . $suffix);
+
+        // Banco vazio: importa a instalação SQLite existente ou semeia as contas
+        if ((int)$pdo->query('SELECT COUNT(*) FROM `users`')->fetchColumn() === 0) {
+            if (!self::importFromSqlite($pdo)) {
+                self::seedUsers($pdo);
+            }
+        }
+    }
+
     /**
-     * Caminho do arquivo do banco.
-     *
-     * Preferência: DB_PATH_OVERRIDE (config.local.php) apontando para fora da
-     * raiz web. Sem override, usa data/ com um nome ALEATÓRIO gravado em
-     * data/dbname.php — assim, mesmo num servidor que ignore .htaccess
-     * (Nginx, Apache sem AllowOverride), o banco não é adivinhável por URL e
-     * o marcador, por ser PHP com guarda, devolve página vazia se acessado.
+     * Copia todos os dados de um banco SQLite existente em data/ para o MySQL
+     * (preservando os IDs) e renomeia o arquivo importado como backup.
      */
-    private static function resolvePath(): string
+    private static function importFromSqlite(PDO $mysql): bool
+    {
+        $dir = BASE_PATH . '/data';
+        $file = null;
+        $marker = $dir . '/dbname.php';
+        if (is_file($marker)) {
+            $name = (string)require $marker;
+            if ($name !== '' && is_file("$dir/$name")) {
+                $file = "$dir/$name";
+            }
+        }
+        if ($file === null) {
+            foreach (glob("$dir/*.sqlite") ?: [] as $f) {
+                $file = $f;
+                break;
+            }
+        }
+        if ($file === null) {
+            return false;
+        }
+
+        $lite = new PDO('sqlite:' . $file, null, null, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+        // Garante que o SQLite está no formato mais recente antes de copiar
+        self::migrateSqliteSchema($lite);
+
+        $tables = [
+            'users' => ['id', 'username', 'name', 'rm', 'role', 'phases_json', 'password_hash', 'active', 'created_at'],
+            'activities' => ['id', 'user_id', 'title', 'description', 'category', 'date', 'prev_start', 'prev_end', 'created_at'],
+            'phases' => ['id', 'activity_id', 'name', 'ord', 'prev_start', 'prev_end', 'real_start', 'real_end'],
+            'phase_pauses' => ['id', 'phase_id', 'start_dt', 'end_dt'],
+            'breaks' => ['id', 'user_id', 'date', 'type', 'start_time', 'end_time'],
+        ];
+        $mysql->beginTransaction();
+        try {
+            foreach ($tables as $table => $cols) {
+                $rows = $lite->query('SELECT ' . implode(', ', $cols) . " FROM $table")->fetchAll();
+                if (!$rows) {
+                    continue;
+                }
+                $sql = 'INSERT INTO `' . $table . '` (`' . implode('`, `', $cols) . '`) VALUES ('
+                     . implode(', ', array_fill(0, count($cols), '?')) . ')';
+                $ins = $mysql->prepare($sql);
+                foreach ($rows as $r) {
+                    $ins->execute(array_map(fn($c) => $r[$c], $cols));
+                }
+            }
+            $mysql->commit();
+        } catch (\Throwable $e) {
+            $mysql->rollBack();
+            throw $e;
+        }
+
+        // O SQLite vira backup e não é importado de novo
+        $lite = null;
+        @rename($file, $file . '.importado-' . date('Ymd-His'));
+        if (is_file($marker)) {
+            @rename($marker, $marker . '.importado');
+        }
+        error_log('[diario_bordo] Dados do SQLite importados para o MySQL com sucesso.');
+        return true;
+    }
+
+    /* ================= SQLite ================= */
+
+    private static function connectSqlite(): PDO
+    {
+        $pdo = new PDO('sqlite:' . self::sqlitePath(), null, null, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+        $pdo->exec('PRAGMA foreign_keys = ON');
+        self::migrateSqliteSchema($pdo);
+        if ((int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0) {
+            self::seedUsers($pdo, self::legacySqliteHash($pdo));
+        }
+        // Atividades antigas sem dono passam a pertencer ao admin
+        $adminId = $pdo->query("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1")->fetchColumn();
+        if ($adminId) {
+            $pdo->prepare('UPDATE activities SET user_id = :a WHERE user_id IS NULL')
+                ->execute([':a' => (int)$adminId]);
+        }
+        return $pdo;
+    }
+
+    /**
+     * Caminho do arquivo SQLite: DB_PATH_OVERRIDE (config.local.php) ou
+     * data/ com nome aleatório gravado em data/dbname.php — não adivinhável
+     * por URL mesmo em servidores que ignorem .htaccess.
+     */
+    private static function sqlitePath(): string
     {
         if (defined('DB_PATH_OVERRIDE')) {
             $dir = dirname(DB_PATH_OVERRIDE);
@@ -66,7 +254,8 @@ final class Database
         return $dir . '/' . $name;
     }
 
-    private static function migrate(PDO $pdo): void
+    /** Cria/atualiza o esquema SQLite (usado na conexão e na importação). */
+    private static function migrateSqliteSchema(PDO $pdo): void
     {
         $pdo->exec('CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,8 +312,8 @@ final class Database
             ip TEXT NOT NULL,
             attempted_at TEXT NOT NULL
         )');
-        // Migração de banco antigo (single-user): adiciona a coluna user_id
-        // antes dos índices que dependem dela
+
+        // Banco antigo (single-user): ganha a coluna user_id antes dos índices
         $cols = array_column($pdo->query('PRAGMA table_info(activities)')->fetchAll(), 'name');
         if (!in_array('user_id', $cols, true)) {
             $pdo->exec('ALTER TABLE activities ADD COLUMN user_id INTEGER');
@@ -136,30 +325,45 @@ final class Database
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_phase_pauses ON phase_pauses(phase_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at)');
 
-        // Semeia as contas iniciais no primeiro acesso
+        // Instalação antiga sem usuários: semeia herdando a senha legada
         if ((int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0) {
-            // O admin herda a senha já cadastrada no banco antigo, se houver
-            $legacy = $pdo->query('SELECT value FROM settings WHERE key = "admin_password_hash"')->fetchColumn();
-            $ins = $pdo->prepare('INSERT INTO users (username, name, rm, role, phases_json, password_hash, created_at)
-                                  VALUES (:u, :n, "", :r, :p, :h, :c)');
-            foreach (SEED_USERS as $seed) {
-                $isAdmin = $seed['role'] === 'admin';
-                $ins->execute([
-                    ':u' => $seed['username'],
-                    ':n' => $seed['name'],
-                    ':r' => $seed['role'],
-                    ':p' => $seed['role'] === 'gestor' ? null : json_encode(DEFAULT_PHASES, JSON_UNESCAPED_UNICODE),
-                    ':h' => ($isAdmin && $legacy) ? (string)$legacy : DEFAULT_ADMIN_PASSWORD_HASH,
-                    ':c' => date('Y-m-d H:i:s'),
-                ]);
-            }
+            self::seedUsers($pdo, self::legacySqliteHash($pdo));
         }
-
-        // Atividades antigas sem dono passam a pertencer ao admin
-        $adminId = $pdo->query('SELECT id FROM users WHERE role = "admin" ORDER BY id LIMIT 1')->fetchColumn();
+        $adminId = $pdo->query("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1")->fetchColumn();
         if ($adminId) {
             $pdo->prepare('UPDATE activities SET user_id = :a WHERE user_id IS NULL')
                 ->execute([':a' => (int)$adminId]);
+        }
+    }
+
+    /* ================= Comum ================= */
+
+    /** Senha do admin gravada por versões antigas (single-user) do sistema. */
+    private static function legacySqliteHash(PDO $sqlite): ?string
+    {
+        try {
+            $v = $sqlite->query("SELECT value FROM settings WHERE key = 'admin_password_hash'")->fetchColumn();
+            return $v === false ? null : (string)$v;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** Cria as contas iniciais (admin herda a senha legada, se existir). */
+    private static function seedUsers(PDO $pdo, ?string $legacyAdminHash = null): void
+    {
+        $ins = $pdo->prepare('INSERT INTO users (username, name, rm, role, phases_json, password_hash, created_at)
+                              VALUES (:u, :n, \'\', :r, :p, :h, :c)');
+        foreach (SEED_USERS as $seed) {
+            $isAdmin = $seed['role'] === 'admin';
+            $ins->execute([
+                ':u' => $seed['username'],
+                ':n' => $seed['name'],
+                ':r' => $seed['role'],
+                ':p' => $seed['role'] === 'gestor' ? null : json_encode(DEFAULT_PHASES, JSON_UNESCAPED_UNICODE),
+                ':h' => ($isAdmin && $legacyAdminHash) ? $legacyAdminHash : DEFAULT_ADMIN_PASSWORD_HASH,
+                ':c' => date('Y-m-d H:i:s'),
+            ]);
         }
     }
 }

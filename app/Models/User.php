@@ -29,7 +29,7 @@ final class User
     public static function all(): array
     {
         return Database::pdo()
-            ->query('SELECT * FROM users ORDER BY role = "admin" DESC, name')
+            ->query("SELECT * FROM users ORDER BY role = 'admin' DESC, name")
             ->fetchAll();
     }
 
@@ -37,7 +37,7 @@ final class User
     public static function professorCapable(): array
     {
         return Database::pdo()
-            ->query('SELECT * FROM users WHERE role != "gestor" AND active = 1 ORDER BY role = "admin" DESC, name')
+            ->query("SELECT * FROM users WHERE role != 'gestor' AND active = 1 ORDER BY role = 'admin' DESC, name")
             ->fetchAll();
     }
 

@@ -32,9 +32,18 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 - Ambos saem com **campos de assinatura**: Maiberte Brogliato (Direção · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
 - Impressão em layout claro de documento; PDF gerado no navegador (jsPDF), com fallback para a impressão.
 
+## Banco de dados: MySQL ou SQLite
+
+A aplicação usa PDO e funciona com **dois bancos**, escolhidos pela configuração:
+
+- **MySQL** (recomendado — gerenciável pelo phpMyAdmin): crie o banco e o usuário no cPanel (MySQL® Databases), copie `app/Config/config.local.php.example` para `config.local.php` e preencha `DB_MYSQL_HOST/NAME/USER/PASS`.
+- **SQLite** (padrão, zero configuração): sem o `config.local.php`, os dados ficam em `data/diario-<aleatório>.sqlite`.
+
+**Migração automática SQLite → MySQL**: na primeira conexão com o banco MySQL vazio, os dados de uma instalação SQLite existente em `data/` são importados automaticamente (contas, atividades, etapas, pausas e descansos, preservando os IDs); o arquivo `.sqlite` é renomeado para `.importado-<data>` e permanece como backup.
+
 ## Arquitetura (MVC)
 
-PHP 8+ com PDO/SQLite, front controller único:
+PHP 8+ com PDO (MySQL ou SQLite), front controller único:
 
 ```
 index.php                     Front controller (rotas via ?r=...)
@@ -48,11 +57,11 @@ app/
 ├── Controllers/
 │   ├── PanelController.php   Login (form nativo + redirect) e painel por perfil
 │   └── ApiController.php     API JSON (sessão, apontamentos, descansos, contas)
-├── Models/                   User, Activity, Phase, Pausa, Setting, LoginAttempt
+├── Models/                   User, Activity, Phase, Pausa, LoginAttempt
 └── Views/                    Layout, login e painel (abas por perfil)
 ```
 
-Banco: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks`, `login_attempts`. Migração automática: banco antigo de usuário único ganha a coluna `user_id`, as atividades existentes passam para o admin e a senha já cadastrada é preservada.
+Tabelas: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks`, `login_attempts`. No MySQL, `phases` e `phase_pauses` têm chave estrangeira com `ON DELETE CASCADE`. Migrações automáticas: banco SQLite antigo de usuário único ganha a coluna `user_id` e preserva a senha cadastrada; SQLite → MySQL importa tudo na primeira conexão.
 
 ## Segurança
 
