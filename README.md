@@ -18,7 +18,7 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 
 ### Apontamentos
 - Ao propor uma atividade (título, data, início e duração estimada), o sistema preenche automaticamente a **previsão de início e término de cada etapa**, distribuindo a duração pelos pesos do modelo do professor.
-- Botões **Iniciar/Concluir** registram os horários reais de cada etapa; edição manual disponível.
+- Botões **Iniciar/Pausar/Retomar/Concluir** registram os horários reais de cada etapa; edição manual disponível. Pausar congela a contagem para trabalhar em outra atividade — o tempo pausado não conta como trabalho e é descontado de todas as horas e relatórios.
 - **Descansos**: registro do horário de almoço e/ou janta por dia — janela realmente bloqueada: a previsão das etapas pula o intervalo, nenhum registro (automático ou manual) é aceito dentro dele, descansos não podem se sobrepor e todas as horas (diário, indicadores e relatórios) descontam a sobreposição com o descanso.
 
 ### Diário
@@ -52,7 +52,7 @@ app/
 └── Views/                    Layout, login e painel (abas por perfil)
 ```
 
-Banco: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `breaks`, `login_attempts`. Migração automática: banco antigo de usuário único ganha a coluna `user_id`, as atividades existentes passam para o admin e a senha já cadastrada é preservada.
+Banco: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks`, `login_attempts`. Migração automática: banco antigo de usuário único ganha a coluna `user_id`, as atividades existentes passam para o admin e a senha já cadastrada é preservada.
 
 ## Segurança
 

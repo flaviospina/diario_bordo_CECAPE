@@ -350,6 +350,7 @@ a { text-decoration: none; color: inherit; }
 .btn-sm:hover { filter: brightness(1.25); }
 .btn-info   { background: rgba(34,211,238,.15); color: var(--cyan);  border-color: rgba(34,211,238,.3); }
 .btn-ok     { background: rgba(16,185,129,.15); color: #34d399;      border-color: rgba(16,185,129,.3); }
+.btn-warn   { background: rgba(234,179,8,.15);  color: #fde047;      border-color: rgba(234,179,8,.3); }
 .btn-danger { background: rgba(239,68,68,.13);  color: #f87171;      border-color: rgba(239,68,68,.28); }
 .btn-muted  { background: rgba(255,255,255,.04); color: var(--text-muted); border-color: var(--border); }
 .btn-muted:hover { color: var(--text); }
@@ -421,6 +422,7 @@ a { text-decoration: none; color: inherit; }
 .activity:hover { box-shadow: var(--shadow-lg); }
 .activity.st-prevista     { border-left-color: var(--text-dim); }
 .activity.st-em_andamento { border-left-color: var(--yellow); }
+.activity.st-pausada      { border-left-color: var(--blue); }
 .activity.st-concluida    { border-left-color: var(--green); }
 
 .activity-head { display: flex; gap: 14px; align-items: flex-start; }
@@ -475,9 +477,17 @@ a { text-decoration: none; color: inherit; }
   justify-self: center;
 }
 .phase.started .dot { border-color: var(--yellow); background: rgba(234,179,8,.35); box-shadow: 0 0 10px rgba(234,179,8,.4); }
+.phase.paused .dot  { border-color: var(--blue);   background: rgba(59,130,246,.35); box-shadow: 0 0 10px rgba(59,130,246,.45); }
 .phase.done .dot    { border-color: var(--green);  background: var(--green); box-shadow: 0 0 10px rgba(16,185,129,.45); }
 .phase .name { font-weight: 600; color: var(--text); }
 .phase.done .name { color: var(--text-muted); }
+.pause-info {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #60a5fa;
+  margin-top: 2px;
+}
 
 .time-block { color: var(--text-muted); font-size: 12.5px; }
 .time-block b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -509,6 +519,7 @@ a { text-decoration: none; color: inherit; }
 
 .chip.prevista     { background: rgba(255,255,255,.05); color: var(--text-muted); border: 1px solid var(--border); }
 .chip.em_andamento { background: rgba(234,179,8,.12);   color: #fde047; border: 1px solid rgba(234,179,8,.25); }
+.chip.pausada      { background: rgba(59,130,246,.12);  color: #60a5fa; border: 1px solid rgba(59,130,246,.25); }
 .chip.concluida    { background: rgba(16,185,129,.12);  color: #34d399; border: 1px solid rgba(16,185,129,.25); }
 .chip.categoria    { background: rgba(168,85,247,.12);  color: var(--purple); border: 1px solid rgba(168,85,247,.25); }
 

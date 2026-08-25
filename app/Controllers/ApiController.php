@@ -201,12 +201,28 @@ final class ApiController extends Controller
 
         $now = date('Y-m-d H:i');
         // Durante o descanso não é possível registrar nada
-        if (in_array($op, ['start', 'finish'], true)) {
+        if (in_array($op, ['start', 'finish', 'pause', 'resume'], true)) {
             $this->rejectIfInBreak($now, 'Você está em horário de descanso');
         }
         switch ($op) {
             case 'start':
                 Phase::setTimes($id, ['real_start' => $now]);
+                break;
+            case 'pause':
+                if (empty($phase['real_start']) || !empty($phase['real_end'])) {
+                    $this->json(['error' => 'Só é possível pausar uma etapa em andamento.'], 422);
+                }
+                if (Phase::openPause($id)) {
+                    $this->json(['error' => 'Esta etapa já está pausada.'], 422);
+                }
+                Phase::addPause($id, $now);
+                break;
+            case 'resume':
+                $open = Phase::openPause($id);
+                if (!$open) {
+                    $this->json(['error' => 'Esta etapa não está pausada.'], 422);
+                }
+                Phase::closePause((int)$open['id'], $now);
                 break;
             case 'finish':
                 $set = ['real_end' => $now];
@@ -214,9 +230,14 @@ final class ApiController extends Controller
                     $set['real_start'] = $phase['prev_start'] ?: $now;
                 }
                 $this->assertTimeOrder($phase, $set);
+                // Concluir uma etapa pausada encerra a pausa junto
+                if ($open = Phase::openPause($id)) {
+                    Phase::closePause((int)$open['id'], $now);
+                }
                 Phase::setTimes($id, $set);
                 break;
             case 'undo':
+                Phase::deletePauses($id);
                 Phase::setTimes($id, ['real_start' => null, 'real_end' => null]);
                 break;
             case 'set_times':

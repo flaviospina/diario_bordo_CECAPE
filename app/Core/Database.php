@@ -100,6 +100,12 @@ final class Database
             real_start TEXT,
             real_end TEXT
         )');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS phase_pauses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phase_id INTEGER NOT NULL REFERENCES phases(id) ON DELETE CASCADE,
+            start_dt TEXT NOT NULL,
+            end_dt TEXT
+        )');
         $pdo->exec('CREATE TABLE IF NOT EXISTS breaks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -127,6 +133,7 @@ final class Database
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_activities_user_date ON activities(user_id, date)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_phases_activity ON phases(activity_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_breaks_user ON breaks(user_id, date)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_phase_pauses ON phase_pauses(phase_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at)');
 
         // Semeia as contas iniciais no primeiro acesso

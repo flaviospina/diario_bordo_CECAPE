@@ -44,6 +44,10 @@ final class Activity
         foreach ($activities as &$a) {
             $phStmt->execute([':id' => $a['id']]);
             $a['phases'] = $phStmt->fetchAll();
+            foreach ($a['phases'] as &$p) {
+                $p['pauses'] = Phase::pauses((int)$p['id']);
+            }
+            unset($p);
             $a['status'] = self::deriveStatus($a['phases']);
             $starts = array_filter(array_column($a['phases'], 'real_start'));
             $ends = array_column($a['phases'], 'real_end');
@@ -196,16 +200,39 @@ final class Activity
         }
         $allDone = true;
         $anyStarted = false;
+        $anyActive = false;   // em execução agora (iniciada, sem término, não pausada)
+        $anyPaused = false;   // com pausa em aberto
         foreach ($phases as $p) {
-            if (!empty($p['real_start'])) {
+            $started = !empty($p['real_start']);
+            $done = !empty($p['real_end']);
+            $paused = false;
+            foreach ($p['pauses'] ?? [] as $pz) {
+                if (empty($pz['end_dt'])) {
+                    $paused = true;
+                }
+            }
+            if ($started) {
                 $anyStarted = true;
             }
-            if (empty($p['real_end'])) {
+            if (!$done) {
                 $allDone = false;
+            }
+            if ($started && !$done) {
+                if ($paused) {
+                    $anyPaused = true;
+                } else {
+                    $anyActive = true;
+                }
             }
         }
         if ($allDone) {
             return 'concluida';
+        }
+        if ($anyActive) {
+            return 'em_andamento';
+        }
+        if ($anyPaused) {
+            return 'pausada';
         }
         return $anyStarted ? 'em_andamento' : 'prevista';
     }
