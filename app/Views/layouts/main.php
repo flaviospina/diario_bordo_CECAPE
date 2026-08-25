@@ -70,6 +70,10 @@ $user = $user ?? null;
       <span>Diário de Bordo · CECAPE</span>
       <span class="sep">|</span>
       <span>Registro de atividades em home office</span>
+      <?php if ($user && $user['role'] === 'admin'): ?>
+        <span class="sep">|</span>
+        <span>Banco: <?= \App\Core\Database::isMysql() ? 'MySQL' : 'SQLite' ?></span>
+      <?php endif; ?>
     </div>
   </footer>
 
