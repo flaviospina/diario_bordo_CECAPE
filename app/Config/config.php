@@ -23,6 +23,12 @@ if (is_file(__DIR__ . '/config.local.php')) {
 const APP_NAME  = 'Diário de Bordo · CECAPE';
 const APP_OWNER = 'Prof. Flávio Spina';
 
+// Endereço público do sistema (usado nas meta tags de compartilhamento)
+defined('APP_URL') or define('APP_URL', 'https://cecapescs.com.br/diariobordo');
+const APP_DESCRIPTION = 'Registro e acompanhamento das atividades em home office do CECAPE — '
+    . 'atividades por etapas com previsão automática, jornada de trabalho, banco de horas '
+    . 'e relatórios assinados pela direção.';
+
 // Logos institucionais exibidas na barra superior e no login
 defined('LOGO_BASE') or define('LOGO_BASE', 'https://cecapescs.com.br/logos');
 const LOGOS = [

@@ -34,6 +34,13 @@ defined('APP_RUNNING') or exit;
 // define('DB_PATH_OVERRIDE', '/var/lib/diariobordo/diario.sqlite');
 
 /*
+ * Endereço público do sistema (usado nas meta tags de compartilhamento —
+ * prévia do link no WhatsApp e redes sociais). Padrão:
+ * https://cecapescs.com.br/diariobordo
+ */
+// define('APP_URL', 'https://outro-endereco.com.br/diariobordo');
+
+/*
  * Caminho das logos institucionais (barra superior e login).
  * Padrão: https://cecapescs.com.br/logos
  * Use um caminho relativo se preferir hospedá-las junto da aplicação.
