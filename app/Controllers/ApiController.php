@@ -8,6 +8,8 @@ defined('APP_RUNNING') or exit;
 use App\Core\Controller;
 use App\Core\Session;
 use App\Models\Activity;
+use App\Models\BancoHoras;
+use App\Models\Jornada;
 use App\Models\LoginAttempt;
 use App\Models\Pausa;
 use App\Models\Phase;
@@ -111,6 +113,7 @@ final class ApiController extends Controller
             'professor' => User::publicView($target),
             'activities' => Activity::allWithPhases((int)$target['id'], $from, $to, $q),
             'breaks' => Pausa::forUser((int)$target['id'], $from, $to),
+            'jornada' => Jornada::forUser((int)$target['id']),
         ]);
     }
 
@@ -300,6 +303,142 @@ final class ApiController extends Controller
         }
         Pausa::delete($id);
         $this->json(['ok' => true]);
+    }
+
+    /* ---------------- Jornada de trabalho ---------------- */
+
+    public function schedule(): void
+    {
+        $this->requireProfessorCapable();
+        $this->json(['days' => Jornada::forUser((int)Session::userId())]);
+    }
+
+    public function scheduleSave(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $daysIn = $this->body()['days'] ?? null;
+        if (!is_array($daysIn) || count($daysIn) > 7) {
+            $this->json(['error' => 'Dados da jornada inválidos.'], 422);
+        }
+        $days = [];
+        $seen = [];
+        foreach ($daysIn as $d) {
+            $weekday = (int)($d['weekday'] ?? -1);
+            $enabled = (int)(bool)($d['enabled'] ?? 0);
+            $start = (string)($d['start'] ?? '');
+            $end = (string)($d['end'] ?? '');
+            if ($weekday < 0 || $weekday > 6 || isset($seen[$weekday])) {
+                $this->json(['error' => 'Dia da semana inválido ou repetido.'], 422);
+            }
+            $seen[$weekday] = true;
+            if (!$this->isValidTime($start)) {
+                $start = '07:00';
+            }
+            if (!$this->isValidTime($end)) {
+                $end = '13:00';
+            }
+            if ($enabled && $end <= $start) {
+                $this->json(['error' => 'Na jornada, a saída deve ser depois da entrada em todos os dias marcados.'], 422);
+            }
+            $days[] = ['weekday' => $weekday, 'enabled' => $enabled, 'start' => $start, 'end' => $end];
+        }
+        Jornada::saveAll((int)Session::userId(), $days);
+        $this->json(['ok' => true]);
+    }
+
+    /* ---------------- Banco de horas ---------------- */
+
+    public function hourBank(): void
+    {
+        $this->requireProfessorCapable();
+        $uid = (int)Session::userId();
+        $this->json([
+            'entries' => BancoHoras::forUser($uid),
+            'total' => BancoHoras::totalMinutes($uid),
+        ]);
+    }
+
+    /** Registra no banco de horas o trabalho feito após o fim da jornada do dia. */
+    public function overtimeRegister(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $date = (string)($this->body()['date'] ?? '');
+        if (!$this->isValidDate($date)) {
+            $date = date('Y-m-d');
+        }
+        $uid = (int)Session::userId();
+
+        $weekday = (int)date('w', strtotime($date));
+        $sched = Jornada::forDay($uid, $weekday);
+        if (!$sched || !(int)$sched['enabled']) {
+            $this->json(['error' => 'Não há jornada de trabalho definida para este dia.'], 422);
+        }
+        $minutes = $this->minutesWorkedAfter($uid, $date, (string)$sched['end_time']);
+        if ($minutes < 1) {
+            $this->json(['error' => 'Nenhum tempo de trabalho registrado após o fim da jornada (' . $sched['end_time'] . ').'], 422);
+        }
+        BancoHoras::upsert($uid, $date, $minutes, 'Trabalho após o fim da jornada (' . $sched['end_time'] . ')');
+        $this->json(['ok' => true, 'minutes' => $minutes]);
+    }
+
+    public function hourBankDelete(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $id = (int)($this->body()['id'] ?? 0);
+        $entry = $id > 0 ? BancoHoras::find($id) : null;
+        if (!$entry || (int)$entry['user_id'] !== (int)Session::userId()) {
+            $this->json(['error' => 'Registro não encontrado.'], 404);
+        }
+        BancoHoras::delete($id);
+        $this->json(['ok' => true]);
+    }
+
+    /**
+     * Minutos de trabalho real do dia após o horário-limite, líquidos de
+     * descansos e pausas (etapa em andamento conta até o momento atual).
+     */
+    private function minutesWorkedAfter(int $uid, string $date, string $limit): int
+    {
+        $limitDt = "$date $limit";
+        $now = date('Y-m-d H:i');
+        $breaks = Pausa::forUser($uid, $date, $date);
+        $total = 0.0;
+        foreach (Activity::allWithPhases($uid, $date, $date, null) as $a) {
+            foreach ($a['phases'] as $p) {
+                if (empty($p['real_start'])) {
+                    continue;
+                }
+                $end = $p['real_end'] ?: ($date === substr($now, 0, 10) ? $now : null);
+                if (!$end) {
+                    continue;
+                }
+                $start = max($p['real_start'], $limitDt);
+                if ($start >= $end) {
+                    continue;
+                }
+                $mins = (strtotime($end) - strtotime($start)) / 60;
+                foreach ($breaks as $b) {
+                    $mins -= $this->overlapMin($start, $end, "$date {$b['start_time']}", "$date {$b['end_time']}");
+                }
+                foreach ($p['pauses'] ?? [] as $pz) {
+                    if (!empty($pz['end_dt'])) {
+                        $mins -= $this->overlapMin($start, $end, $pz['start_dt'], $pz['end_dt']);
+                    }
+                }
+                $total += max(0, $mins);
+            }
+        }
+        return (int)round($total);
+    }
+
+    private function overlapMin(string $aS, string $aE, string $bS, string $bE): float
+    {
+        $s = max(strtotime($aS), strtotime($bS));
+        $e = min(strtotime($aE), strtotime($bE));
+        return $e > $s ? ($e - $s) / 60 : 0;
     }
 
     /* ---------------- Contas (somente admin) ---------------- */

@@ -38,8 +38,11 @@ const DIRECTOR_ROLE = 'Direção · CECAPE';
 // Perfis de acesso
 const ROLE_LABELS = ['admin' => 'Administrador', 'gestor' => 'Gestão', 'professor' => 'Professor'];
 
-// Tipos de descanso registráveis no dia de trabalho
-const BREAK_TYPES = ['almoco' => 'Almoço', 'janta' => 'Janta'];
+// Tipos de intervalo registráveis no dia de trabalho
+const BREAK_TYPES = ['almoco' => 'Almoço', 'janta' => 'Janta', 'saida_medica' => 'Saída médica'];
+
+// Aviso de fim de jornada: alerta quando faltarem até N minutos
+const JORNADA_WARN_MINUTES = 30;
 
 /*
  * Contas criadas automaticamente no primeiro acesso (senha inicial: cecape2026).

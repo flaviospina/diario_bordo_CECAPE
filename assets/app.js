@@ -13,12 +13,20 @@ let STATE = {
   role: null, userId: 0, userName: '', userRm: '',
   director: '', directorRole: '',
   professors: [], profId: 0, professor: null,
-  activities: [], breaks: [], formBreaks: [],
+  activities: [], breaks: [], formBreaks: [], jornada: [],
+  schedule: [], hourBank: [], hourBankTotal: 0,
   phasesTemplate: [], reportData: null, reportType: 'simplificado'
 };
 
 const STATUS_LABEL = { prevista: 'Prevista', em_andamento: 'Em andamento', pausada: 'Pausada', concluida: 'Concluída' };
-const BREAK_LABEL = { almoco: 'Almoço', janta: 'Janta' };
+const BREAK_LABEL = { almoco: 'Almoço', janta: 'Janta', saida_medica: 'Saída médica' };
+const BREAK_ICON = { almoco: '☕', janta: '🍽', saida_medica: '🏥' };
+const JORNADA_WARN_MIN = 30; // avisa quando faltar até 30min para o fim da jornada
+const WEEKDAYS = [
+  { w: 1, label: 'Segunda-feira' }, { w: 2, label: 'Terça-feira' },
+  { w: 3, label: 'Quarta-feira' }, { w: 4, label: 'Quinta-feira' },
+  { w: 5, label: 'Sexta-feira' }, { w: 6, label: 'Sábado' }, { w: 0, label: 'Domingo' }
+];
 
 /* ---------------- Utilidades ---------------- */
 
@@ -164,6 +172,7 @@ async function load() {
   STATE.professor = data.professor;
   STATE.activities = data.activities;
   STATE.breaks = data.breaks;
+  STATE.jornada = data.jornada || [];
   renderStats();
   renderList();
 }
@@ -287,7 +296,14 @@ function activityCard(a, editable) {
 }
 
 function breakChip(b, editable) {
-  return `<span class="break-chip">☕ ${BREAK_LABEL[b.type] || b.type} ${esc(b.start_time)}–${esc(b.end_time)}${editable ? ` <button class="break-del" data-break="${b.id}" title="Remover descanso">✕</button>` : ''}</span>`;
+  return `<span class="break-chip">${BREAK_ICON[b.type] || '☕'} ${BREAK_LABEL[b.type] || b.type} ${esc(b.start_time)}–${esc(b.end_time)}${editable ? ` <button class="break-del" data-break="${b.id}" title="Remover intervalo">✕</button>` : ''}</span>`;
+}
+
+function jornadaChip(day) {
+  const wd = new Date(day + 'T12:00:00').getDay();
+  const s = STATE.jornada.find(x => Number(x.weekday) === wd && Number(x.enabled) === 1);
+  if (!s) return '';
+  return `<span class="jornada-chip">🕐 Jornada ${esc(s.start_time.slice(0, 5))}–${esc(s.end_time.slice(0, 5))}</span>`;
 }
 
 function renderList() {
@@ -308,6 +324,7 @@ function renderList() {
       <div class="day-head">
         <h2>${fmtDay(day)}</h2>
         <span>${list.length} atividade${list.length !== 1 ? 's' : ''}${dayMin ? ' · ' + fmtDuration(dayMin) + ' registradas' : ''}</span>
+        ${jornadaChip(day)}
         ${dayBreaks.map(b => breakChip(b, editable)).join('')}
       </div>
       ${list.map(a => activityCard(a, editable)).join('') || ''}
@@ -596,6 +613,126 @@ async function submitBreak(ev) {
   } catch (e) { toast(e.message); }
 }
 
+/* ---------------- Jornada de trabalho ---------------- */
+
+async function loadJornadaData() {
+  const [sched, bank] = await Promise.all([api('schedule'), api('hour-bank')]);
+  STATE.schedule = sched.days;
+  STATE.hourBank = bank.entries;
+  STATE.hourBankTotal = bank.total;
+}
+
+function renderScheduleForm() {
+  const wrap = $('#jornada-rows');
+  if (!wrap) return;
+  wrap.innerHTML = WEEKDAYS.map(d => {
+    const s = STATE.schedule.find(x => Number(x.weekday) === d.w) || {};
+    const en = Number(s.enabled ?? 0) === 1;
+    return `
+    <div class="jornada-row" data-weekday="${d.w}">
+      <label class="jr-day"><input type="checkbox" class="jr-enabled" ${en ? 'checked' : ''}> ${d.label}</label>
+      <div class="jr-times">
+        <label class="jr-lbl">Entrada</label>
+        <input type="time" class="form-control form-sm jr-start" value="${esc((s.start_time || '07:00').slice(0, 5))}" ${en ? '' : 'disabled'}>
+        <label class="jr-lbl">Saída</label>
+        <input type="time" class="form-control form-sm jr-end" value="${esc((s.end_time || '14:40').slice(0, 5))}" ${en ? '' : 'disabled'}>
+      </div>
+    </div>`;
+  }).join('');
+  $$('.jr-enabled', wrap).forEach(cb => cb.addEventListener('change', () => {
+    const row = cb.closest('.jornada-row');
+    row.querySelector('.jr-start').disabled = !cb.checked;
+    row.querySelector('.jr-end').disabled = !cb.checked;
+  }));
+}
+
+async function saveSchedule(ev) {
+  ev.preventDefault();
+  const days = $$('#jornada-rows .jornada-row').map(r => ({
+    weekday: parseInt(r.dataset.weekday, 10),
+    enabled: r.querySelector('.jr-enabled').checked ? 1 : 0,
+    start: r.querySelector('.jr-start').value || '07:00',
+    end: r.querySelector('.jr-end').value || '13:00'
+  }));
+  for (const d of days) {
+    if (d.enabled && d.end <= d.start) {
+      return toast('A saída deve ser depois da entrada em todos os dias marcados.');
+    }
+  }
+  try {
+    await api('schedule-save', { body: { days } });
+    toast('Jornada semanal salva.');
+    await loadJornadaData();
+    renderScheduleForm();
+    updateJornadaFlag();
+    await load(); // atualiza as etiquetas de jornada no diário
+  } catch (e) { toast(e.message); }
+}
+
+function renderHourBank() {
+  const tbody = $('#hb-table tbody');
+  if (!tbody) return;
+  $('#hb-total').textContent = 'Saldo: ' + fmtDuration(STATE.hourBankTotal);
+  if (!STATE.hourBank.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="hb-empty">Nenhum registro no banco de horas ainda.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = STATE.hourBank.map(h => `
+    <tr>
+      <td>${fmtDayShort(h.date)}</td>
+      <td><b>${fmtDuration(h.minutes)}</b></td>
+      <td>${esc(h.note || '')}</td>
+      <td class="action-cell"><button class="btn-sm btn-danger" data-hb="${h.id}">Excluir</button></td>
+    </tr>`).join('');
+  $$('#hb-table [data-hb]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Excluir este registro do banco de horas?')) return;
+    try {
+      await api('hour-bank-delete', { body: { id: btn.dataset.hb } });
+      toast('Registro excluído.');
+      await loadJornadaData();
+      renderHourBank();
+      updateJornadaFlag();
+    } catch (e) { toast(e.message); }
+  }));
+}
+
+/** Banner de aviso: fim de jornada próximo ou ultrapassado (só do próprio dia). */
+function updateJornadaFlag() {
+  const el = $('#jornada-flag');
+  if (!el) return;
+  const now = new Date();
+  const s = STATE.schedule.find(x => Number(x.weekday) === now.getDay() && Number(x.enabled) === 1);
+  if (!s) { el.hidden = true; return; }
+  const endStr = (s.end_time || '').slice(0, 5);
+  const end = new Date(`${isoDate(now)}T${endStr}`);
+  const diff = Math.round((end - now) / 60000);
+  const reg = STATE.hourBank.find(h => h.date === isoDate(now));
+  if (diff > 0 && diff <= JORNADA_WARN_MIN) {
+    el.className = 'jornada-flag warn no-print';
+    el.innerHTML = `⏰ Atenção: sua jornada de hoje termina às <b>${endStr}</b> — faltam <b>${diff} min</b>.`;
+    el.hidden = false;
+  } else if (diff <= 0) {
+    el.className = 'jornada-flag over no-print';
+    el.innerHTML = `🕐 Sua jornada de hoje terminou às <b>${endStr}</b> (<b>${fmtDuration(-diff)}</b> além do horário). `
+      + (reg ? `Banco de horas do dia: <b>${fmtDuration(reg.minutes)}</b>. ` : '')
+      + `<button class="btn-sm btn-warn" id="btn-overtime">${reg ? 'Atualizar' : 'Registrar'} horas no banco de horas</button>`;
+    el.hidden = false;
+    $('#btn-overtime')?.addEventListener('click', registerOvertime);
+  } else {
+    el.hidden = true;
+  }
+}
+
+async function registerOvertime() {
+  try {
+    const r = await api('overtime-register', { body: {} });
+    toast(`${fmtDuration(r.minutes)} registrados no banco de horas.`);
+    await loadJornadaData();
+    renderHourBank();
+    updateJornadaFlag();
+  } catch (e) { toast(e.message); }
+}
+
 /* ---------------- Senha ---------------- */
 
 async function changePassword(ev) {
@@ -856,7 +993,7 @@ function buildSimplifiedHtml(data) {
   <div class="paper" id="paper">
     ${reportHeaderHtml('Simplificado', prof)}
     <table class="paper-table">
-      <thead><tr><th>Data</th><th>Início</th><th>Término</th><th>Descanso</th><th>Horas trabalhadas</th></tr></thead>
+      <thead><tr><th>Data</th><th>Início</th><th>Término</th><th>Intervalos</th><th>Horas trabalhadas</th></tr></thead>
       <tbody>
         ${rows.map(r => `<tr>
           <td>${fmtDayShort(r.day)}</td>
@@ -991,7 +1128,7 @@ function exportReportPDF() {
     const totalMin = rows.reduce((s, r) => s + (r.liquido || 0), 0);
     doc.autoTable({
       startY: 31,
-      head: [['Data', 'Início', 'Término', 'Descanso', 'Horas trabalhadas']],
+      head: [['Data', 'Início', 'Término', 'Intervalos', 'Horas trabalhadas']],
       body: rows.map(r => [fmtDayShort(r.day), r.inicio + r.marcador, r.fim + r.marcador, r.descanso, r.liquido != null ? fmtDuration(r.liquido) : '—']),
       foot: [[`Total (${rows.length} dia${rows.length !== 1 ? 's' : ''})`, '', '', '', fmtDuration(totalMin)]],
       styles: { fontSize: 9, cellPadding: 2.2 },
@@ -1067,6 +1204,14 @@ async function initPanel() {
     $('#activity-form').addEventListener('submit', submitActivity);
     $('#break-form').addEventListener('submit', submitBreak);
     await loadFormBreaks();
+
+    // Jornada de trabalho e banco de horas
+    await loadJornadaData();
+    renderScheduleForm();
+    renderHourBank();
+    updateJornadaFlag();
+    $('#jornada-form').addEventListener('submit', saveSchedule);
+    setInterval(updateJornadaFlag, 60000);
   }
 
   // Relatórios

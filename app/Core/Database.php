@@ -108,7 +108,7 @@ final class Database
             `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
             `user_id` INT UNSIGNED NOT NULL,
             `date` VARCHAR(10) NOT NULL,
-            `type` VARCHAR(10) NOT NULL,
+            `type` VARCHAR(20) NOT NULL,
             `start_time` VARCHAR(5) NOT NULL,
             `end_time` VARCHAR(5) NOT NULL,
             KEY `idx_breaks_user` (`user_id`, `date`)' . $suffix);
@@ -117,6 +117,30 @@ final class Database
             `ip` VARCHAR(45) NOT NULL,
             `attempted_at` VARCHAR(19) NOT NULL,
             KEY `idx_login_attempts_ip` (`ip`, `attempted_at`)' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `work_schedules` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `user_id` INT UNSIGNED NOT NULL,
+            `weekday` TINYINT NOT NULL,
+            `enabled` TINYINT NOT NULL DEFAULT 1,
+            `start_time` VARCHAR(5) NOT NULL,
+            `end_time` VARCHAR(5) NOT NULL,
+            UNIQUE KEY `uq_schedule` (`user_id`, `weekday`)' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `hour_bank` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `user_id` INT UNSIGNED NOT NULL,
+            `date` VARCHAR(10) NOT NULL,
+            `minutes` INT NOT NULL,
+            `note` VARCHAR(200) NOT NULL DEFAULT \'\',
+            `created_at` VARCHAR(19) NOT NULL,
+            UNIQUE KEY `uq_hour_bank` (`user_id`, `date`)' . $suffix);
+
+        // Alarga a coluna type de instalações anteriores (para "saida_medica")
+        $len = $pdo->query("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+                            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'breaks' AND COLUMN_NAME = 'type'")
+                   ->fetchColumn();
+        if ($len !== false && (int)$len < 20) {
+            $pdo->exec('ALTER TABLE `breaks` MODIFY `type` VARCHAR(20) NOT NULL');
+        }
 
         // Banco vazio: importa a instalação SQLite existente ou semeia as contas
         if ((int)$pdo->query('SELECT COUNT(*) FROM `users`')->fetchColumn() === 0) {
@@ -164,6 +188,8 @@ final class Database
             'phases' => ['id', 'activity_id', 'name', 'ord', 'prev_start', 'prev_end', 'real_start', 'real_end'],
             'phase_pauses' => ['id', 'phase_id', 'start_dt', 'end_dt'],
             'breaks' => ['id', 'user_id', 'date', 'type', 'start_time', 'end_time'],
+            'work_schedules' => ['id', 'user_id', 'weekday', 'enabled', 'start_time', 'end_time'],
+            'hour_bank' => ['id', 'user_id', 'date', 'minutes', 'note', 'created_at'],
         ];
         $mysql->beginTransaction();
         try {
@@ -311,6 +337,24 @@ final class Database
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ip TEXT NOT NULL,
             attempted_at TEXT NOT NULL
+        )');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS work_schedules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            weekday INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            UNIQUE(user_id, weekday)
+        )');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS hour_bank (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            minutes INTEGER NOT NULL,
+            note TEXT NOT NULL DEFAULT "",
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, date)
         )');
 
         // Banco antigo (single-user): ganha a coluna user_id antes dos índices

@@ -19,12 +19,17 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 ### Apontamentos
 - Ao propor uma atividade (título, data, início e duração estimada), o sistema preenche automaticamente a **previsão de início e término de cada etapa**, distribuindo a duração pelos pesos do modelo do professor.
 - Botões **Iniciar/Pausar/Retomar/Concluir** registram os horários reais de cada etapa; edição manual disponível. Pausar congela a contagem para trabalhar em outra atividade — o tempo pausado não conta como trabalho e é descontado de todas as horas e relatórios.
-- **Descansos**: registro do horário de almoço e/ou janta por dia — janela realmente bloqueada: a previsão das etapas pula o intervalo, nenhum registro (automático ou manual) é aceito dentro dele, descansos não podem se sobrepor e todas as horas (diário, indicadores e relatórios) descontam a sobreposição com o descanso.
+- **Intervalos**: registro de almoço, janta ou **saída médica** (horário de saída e retorno) por dia — janela realmente bloqueada: a previsão das etapas pula o intervalo, nenhum registro (automático ou manual) é aceito dentro dele, descansos não podem se sobrepor e todas as horas (diário, indicadores e relatórios) descontam a sobreposição com o descanso.
 
 ### Diário
 - Filtros por professor (gestão/admin), período (hoje/semana/mês/tudo ou datas livres) e busca.
 - Indicadores: atividades, concluídas, em andamento, horas registradas, descanso e dias de trabalho.
 - Exportação XLS com uma linha por etapa (inclui professor e RM).
+
+### Jornada de trabalho e banco de horas
+- Página própria para informar a **jornada semanal** (entrada e saída de cada dia, ex.: 07:00 às 14:40).
+- O diário exibe a jornada do dia; um aviso aparece quando faltam 30 minutos para o fim do expediente e, passado o horário, o sistema oferece **registrar as horas excedentes no banco de horas** (calculadas dos apontamentos reais, líquidas de intervalos e pausas; um registro por dia, atualizável).
+- Saldo e extrato do banco de horas na própria página da jornada.
 
 ### Relatórios (com assinaturas)
 - **Simplificado**: uma linha por dia com início e término do trabalho apontado, descansos e horas trabalhadas líquidas. Se o dia tem registros reais, os horários exibidos são somente os reais; dias sem registro real usam a previsão, marcados com `*`.
@@ -57,11 +62,11 @@ app/
 ├── Controllers/
 │   ├── PanelController.php   Login (form nativo + redirect) e painel por perfil
 │   └── ApiController.php     API JSON (sessão, apontamentos, descansos, contas)
-├── Models/                   User, Activity, Phase, Pausa, LoginAttempt
+├── Models/                   User, Activity, Phase, Pausa, Jornada, BancoHoras, LoginAttempt
 └── Views/                    Layout, login e painel (abas por perfil)
 ```
 
-Tabelas: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks`, `login_attempts`. No MySQL, `phases` e `phase_pauses` têm chave estrangeira com `ON DELETE CASCADE`. Migrações automáticas: banco SQLite antigo de usuário único ganha a coluna `user_id` e preserva a senha cadastrada; SQLite → MySQL importa tudo na primeira conexão.
+Tabelas: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks` (intervalos), `work_schedules` (jornada semanal), `hour_bank` (banco de horas), `login_attempts`. No MySQL, `phases` e `phase_pauses` têm chave estrangeira com `ON DELETE CASCADE`. Migrações automáticas: banco SQLite antigo de usuário único ganha a coluna `user_id` e preserva a senha cadastrada; SQLite → MySQL importa tudo na primeira conexão.
 
 ## Segurança
 

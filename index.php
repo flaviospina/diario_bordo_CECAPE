@@ -60,6 +60,13 @@ $router->add('POST', 'api/phase', ApiController::class, 'phase');
 $router->add('POST', 'api/break-create', ApiController::class, 'breakCreate');
 $router->add('POST', 'api/break-delete', ApiController::class, 'breakDelete');
 
+// API — jornada de trabalho e banco de horas
+$router->add('GET', 'api/schedule', ApiController::class, 'schedule');
+$router->add('POST', 'api/schedule-save', ApiController::class, 'scheduleSave');
+$router->add('GET', 'api/hour-bank', ApiController::class, 'hourBank');
+$router->add('POST', 'api/overtime-register', ApiController::class, 'overtimeRegister');
+$router->add('POST', 'api/hour-bank-delete', ApiController::class, 'hourBankDelete');
+
 // API — contas (somente administrador)
 $router->add('GET', 'api/users', ApiController::class, 'users');
 $router->add('POST', 'api/user-create', ApiController::class, 'userCreate');

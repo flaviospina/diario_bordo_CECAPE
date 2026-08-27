@@ -19,9 +19,12 @@ $admin = $role === 'admin';
       <div class="tab-bar no-print" id="tabs">
         <?php if ($capable): ?><button class="tab-btn" data-tab="registrar">✏️ Registrar</button><?php endif; ?>
         <button class="tab-btn active" data-tab="diario">📒 Diário</button>
+        <?php if ($capable): ?><button class="tab-btn" data-tab="jornada">🕐 Jornada</button><?php endif; ?>
         <button class="tab-btn" data-tab="relatorios">🖨 Relatórios</button>
         <?php if ($admin): ?><button class="tab-btn" data-tab="contas">👥 Contas</button><?php endif; ?>
       </div>
+
+      <?php if ($capable): ?><div id="jornada-flag" class="jornada-flag no-print" hidden></div><?php endif; ?>
 
       <?php if ($capable): ?>
       <!-- ══════════ REGISTRAR ══════════ -->
@@ -71,8 +74,8 @@ $admin = $role === 'admin';
         </div>
 
         <div class="panel-card">
-          <div class="panel-title">Registrar descanso</div>
-          <p class="hint">Aponte o horário de almoço e/ou janta do dia de trabalho. O descanso aparece no diário e é descontado das horas do relatório.</p>
+          <div class="panel-title">Registrar descanso ou saída</div>
+          <p class="hint">Aponte o almoço, a janta ou uma saída médica (horário de saída e de retorno). O intervalo aparece no diário, bloqueia registros no período e é descontado das horas do relatório.</p>
           <form id="break-form">
             <div class="form-grid">
               <div class="form-group col-4">
@@ -84,14 +87,15 @@ $admin = $role === 'admin';
                 <select id="b-type" class="form-control form-select">
                   <option value="almoco">Almoço</option>
                   <option value="janta">Janta</option>
+                  <option value="saida_medica">Saída médica</option>
                 </select>
               </div>
               <div class="form-group col-2">
-                <label class="form-label" for="b-start">Início <span class="req">*</span></label>
+                <label class="form-label" for="b-start">Saída/início <span class="req">*</span></label>
                 <input type="time" id="b-start" class="form-control" required>
               </div>
               <div class="form-group col-2">
-                <label class="form-label" for="b-end">Término <span class="req">*</span></label>
+                <label class="form-label" for="b-end">Retorno/término <span class="req">*</span></label>
                 <input type="time" id="b-end" class="form-control" required>
               </div>
               <div class="form-group col-2 form-group-btn">
@@ -162,6 +166,36 @@ $admin = $role === 'admin';
           </form>
         </details>
       </section>
+
+      <?php if ($capable): ?>
+      <!-- ══════════ JORNADA ══════════ -->
+      <section id="tab-jornada" class="tab-panel" hidden>
+        <div class="panel-card">
+          <div class="panel-title">Jornada de trabalho semanal</div>
+          <p class="hint">Informe a entrada e a saída de cada dia da semana em que trabalha (ex.: 07:00 às 14:40). O diário mostra a jornada do dia, avisa quando o fim do expediente se aproxima e, se você passar do horário, oferece o registro das horas excedentes no banco de horas.</p>
+          <form id="jornada-form">
+            <div id="jornada-rows"></div>
+            <div class="form-actions">
+              <button class="btn-primary" type="submit">Salvar jornada</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-header-row">
+            <div class="panel-title">Banco de horas</div>
+            <span class="badge badge-cyan" id="hb-total">—</span>
+          </div>
+          <p class="hint">Créditos registrados quando você trabalha além do fim da jornada (um registro por dia; registrar de novo no mesmo dia atualiza o valor).</p>
+          <div class="table-wrap">
+            <table class="data-table" id="hb-table">
+              <thead><tr><th>Data</th><th>Horas</th><th>Observação</th><th>Ações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      <?php endif; ?>
 
       <!-- ══════════ RELATÓRIOS ══════════ -->
       <section id="tab-relatorios" class="tab-panel" hidden>
