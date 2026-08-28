@@ -82,6 +82,11 @@ $user = $user ?? null;
         <?php $badge = ['admin' => 'badge-orange', 'gestor' => 'badge-cyan', 'professor' => 'badge-purple'][$user['role']] ?? 'badge-cyan'; ?>
         <span class="user-badge"><?= e($user['name']) ?></span>
         <span class="badge <?= e($badge) ?>"><?= e(ROLE_LABELS[$user['role']] ?? $user['role']) ?></span>
+        <?php if ($page === 'tutorial'): ?>
+          <a class="btn btn-config" href="<?= e(url('')) ?>">← Voltar ao painel</a>
+        <?php else: ?>
+          <a class="btn btn-config" href="<?= e(url('ajuda')) ?>">❓ Ajuda</a>
+        <?php endif; ?>
         <form method="post" action="<?= e(url('logout')) ?>" class="logout-form">
           <input type="hidden" name="_csrf" value="<?= e(Csrf::token()) ?>">
           <button class="btn btn-exit" type="submit">Sair</button>

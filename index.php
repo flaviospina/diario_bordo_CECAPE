@@ -38,6 +38,7 @@ $router = new Router();
 // Painel único (login + área por perfil)
 $router->add('GET', '', PanelController::class, 'index');
 $router->add('GET', 'admin', PanelController::class, 'index'); // endereço antigo
+$router->add('GET', 'ajuda', PanelController::class, 'tutorial');
 $router->add('POST', 'login', PanelController::class, 'login');
 $router->add('POST', 'logout', PanelController::class, 'logout');
 

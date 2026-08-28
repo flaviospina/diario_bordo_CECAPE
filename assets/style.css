@@ -837,6 +837,112 @@ a.link:hover { text-decoration: underline; }
 #report-area { margin-top: 4px; }
 #print-root { display: none; }
 
+/* ── TUTORIAL (página Ajuda) ───────────────────────────────── */
+.tut { max-width: 980px; }
+.tut-index { padding: 18px 24px; margin-bottom: 30px; }
+.tut-index-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.tut-index-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all .18s;
+}
+.tut-index-links a:hover { color: var(--cyan); border-color: rgba(34,211,238,.35); background: rgba(34,211,238,.08); }
+
+.tut-section { margin-bottom: 46px; scroll-margin-top: 80px; }
+.tut-hero {
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
+  display: block;
+}
+.tut-section > p, .tut-section li { font-size: 14.5px; line-height: 1.8; color: #c9d8e6; }
+.tut-section > p { margin-bottom: 14px; }
+.tut-section h3 {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--cyan);
+  margin: 22px 0 10px;
+}
+.tut-section ul { margin: 0 0 14px 22px; }
+.tut-section ul li { margin-bottom: 6px; }
+.tut-section code {
+  background: rgba(255,255,255,.07);
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: 13px;
+  color: var(--cyan);
+}
+.tut-steps {
+  margin: 0 0 16px 22px;
+  counter-reset: passo;
+  list-style: none;
+}
+.tut-steps li {
+  counter-increment: passo;
+  position: relative;
+  padding-left: 40px;
+  margin-bottom: 10px;
+}
+.tut-steps li::before {
+  content: counter(passo);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--grad-btn);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tut-img {
+  margin: 16px 0 22px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.tut-img img { width: 100%; display: block; }
+.tut-img figcaption {
+  padding: 11px 18px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  line-height: 1.6;
+}
+.tut-tip {
+  background: rgba(34,211,238,.07);
+  border: 1px solid rgba(34,211,238,.25);
+  border-left: 4px solid var(--cyan);
+  border-radius: var(--radius-sm);
+  padding: 13px 18px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: #c9d8e6;
+  margin: 14px 0;
+}
+.tut-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin: 8px 0 14px; }
+.tut-cols h3 { margin-top: 0; }
+.tut-cols p { font-size: 14px; line-height: 1.75; color: #c9d8e6; }
+.tut-dicas { margin: 4px 0 4px 22px; }
+.tut-dicas li { margin-bottom: 10px; }
+@media (max-width: 760px) {
+  .tut-cols { grid-template-columns: 1fr; }
+}
+
 /* ── DIVERSOS ──────────────────────────────────────────────── */
 .empty {
   background: var(--bg-card);

@@ -1,0 +1,221 @@
+<?php
+defined('APP_RUNNING') or exit;
+/** @var array $user Usuário logado */
+$role = $user['role'];
+$capable = $role !== 'gestor';
+$admin = $role === 'admin';
+$T = 'assets/tutorial';
+?>
+  <main class="main-content">
+    <div class="page-container tut">
+      <div class="page-header">
+        <h1 class="page-title">Como usar o Diário de Bordo</h1>
+        <p class="page-sub">Tutorial completo, funcionalidade por funcionalidade. Use o índice para ir direto ao que precisa.</p>
+      </div>
+
+      <nav class="panel-card tut-index">
+        <div class="panel-title">Índice</div>
+        <div class="tut-index-links">
+          <a href="#acesso">🔐 Acesso e senha</a>
+          <?php if ($capable): ?><a href="#registrar">✏️ Registrar atividades</a><?php endif; ?>
+          <?php if ($capable): ?><a href="#intervalos">☕ Descansos e saídas</a><?php endif; ?>
+          <a href="#diario">📒 Diário</a>
+          <?php if ($capable): ?><a href="#jornada">🕐 Jornada e banco de horas</a><?php endif; ?>
+          <a href="#relatorios">🖨 Relatórios</a>
+          <?php if ($admin): ?><a href="#contas">👥 Contas da equipe</a><?php endif; ?>
+          <a href="#dicas">💡 Dicas rápidas</a>
+        </div>
+      </nav>
+
+      <!-- ═══════════ ACESSO ═══════════ -->
+      <section class="tut-section" id="acesso">
+        <img class="tut-hero" src="<?= $T ?>/hero-acesso.jpg" alt="Acesso ao sistema">
+        <p>O sistema tem uma <b>tela de login única</b>: administrador, gestão e professores entram pelo mesmo endereço, cada um com seu usuário e senha. Nada fica visível sem login.</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-login.jpg" alt="Tela de login">
+          <figcaption>Tela de login — informe seu usuário (ex.: <code>nome.sobrenome</code>) e a senha.</figcaption>
+        </figure>
+        <div class="tut-cols">
+          <div>
+            <h3>Perfis de acesso</h3>
+            <ul>
+              <li><b>Administrador</b> — gerencia as contas, registra os próprios apontamentos e consulta tudo.</li>
+              <li><b>Gestão</b> (direção) — consulta o diário de qualquer professor e gera relatórios. Não edita nada.</li>
+              <li><b>Professor</b> — registra as próprias atividades, descansos e jornada; gera o próprio relatório.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Trocar a senha</h3>
+            <p>Na aba <b>Diário</b>, ao final da página, abra <b>"🔒 Trocar minha senha"</b>. Informe a senha atual e a nova (mínimo 8 caracteres). Troque a senha inicial no primeiro acesso.</p>
+          </div>
+        </div>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-senha.jpg" alt="Trocar senha">
+          <figcaption>O card de troca de senha fica no final da aba Diário.</figcaption>
+        </figure>
+        <div class="tut-tip">⚠️ Após <b>5 tentativas erradas</b> de login, o acesso fica bloqueado por 15 minutos — proteção contra invasões. A sessão expira sozinha após 8&nbsp;horas sem uso.</div>
+      </section>
+
+      <?php if ($capable): ?>
+      <!-- ═══════════ REGISTRAR ═══════════ -->
+      <section class="tut-section" id="registrar">
+        <img class="tut-hero" src="<?= $T ?>/hero-registrar.jpg" alt="Registrar atividades">
+        <p>Na aba <b>✏️ Registrar</b> você propõe as atividades do dia. O grande diferencial: você informa só o essencial e o <b>sistema preenche a previsão de cada etapa automaticamente</b>.</p>
+        <ol class="tut-steps">
+          <li>Preencha o <b>título</b> (obrigatório), a categoria e a descrição.</li>
+          <li>Informe a <b>data</b>, o <b>horário de início</b> e a <b>duração estimada</b> em minutos.</li>
+          <li>Confira as <b>etapas</b>: elas vêm do seu modelo de trabalho (nome e peso % de cada uma) e podem ser ajustadas para esta atividade — adicione, remova ou renomeie.</li>
+          <li>Veja a <b>prévia da previsão</b> ao lado do botão: o sistema distribui a duração pelos pesos e mostra o horário previsto de cada etapa.</li>
+          <li>Clique em <b>Registrar atividade</b>.</li>
+        </ol>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-registrar.jpg" alt="Formulário de nova atividade">
+          <figcaption>A prévia (destacada) mostra o horário previsto de cada etapa antes de salvar — e já desvia dos descansos registrados no dia.</figcaption>
+        </figure>
+        <div class="tut-tip">💡 Registre o <b>almoço antes</b> de propor as atividades do dia: a previsão das etapas pula automaticamente o intervalo (ex.: atividade de 4h iniciada às 10h com almoço 12h–13h termina às 15h).</div>
+      </section>
+
+      <!-- ═══════════ INTERVALOS ═══════════ -->
+      <section class="tut-section" id="intervalos">
+        <img class="tut-hero" src="<?= $T ?>/hero-intervalos.jpg" alt="Descansos e saídas">
+        <p>Ainda na aba Registrar, o card <b>"Registrar descanso ou saída"</b> aponta os intervalos do dia. Há três tipos:</p>
+        <ul>
+          <li><b>☕ Almoço</b> e <b>🍽 Janta</b> — horários de descanso da jornada;</li>
+          <li><b>🏥 Saída médica</b> — informe o horário de <b>saída</b> e o de <b>retorno</b>.</li>
+        </ul>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-descanso.jpg" alt="Registro de descanso ou saída">
+          <figcaption>Escolha o tipo (destacado), a data e o intervalo. Para excluir um intervalo, use o ✕ na etiqueta dele no Diário.</figcaption>
+        </figure>
+        <p>O intervalo registrado é uma <b>janela protegida</b>:</p>
+        <ul>
+          <li>a previsão de novas atividades <b>pula</b> o período;</li>
+          <li><b>nenhum registro é aceito</b> dentro dele — os botões Iniciar/Pausar/Concluir e a edição manual são recusados com aviso;</li>
+          <li>o tempo é <b>descontado</b> de todas as horas (indicadores, diário e relatórios);</li>
+          <li>intervalos do mesmo dia não podem se sobrepor.</li>
+        </ul>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-chips.jpg" alt="Etiquetas do dia">
+          <figcaption>No Diário, cada dia mostra a jornada e os intervalos registrados como etiquetas.</figcaption>
+        </figure>
+      </section>
+      <?php endif; ?>
+
+      <!-- ═══════════ DIÁRIO ═══════════ -->
+      <section class="tut-section" id="diario">
+        <img class="tut-hero" src="<?= $T ?>/hero-diario.jpg" alt="Diário">
+        <p>A aba <b>📒 Diário</b> é o centro do sistema: os indicadores do período, os filtros e a lista de atividades por dia, cada uma com suas etapas e horários <b>previstos × reais</b>.</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-diario.jpg" alt="Visão geral do Diário">
+          <figcaption>Indicadores (atividades, concluídas, em andamento, horas líquidas, descanso e dias), filtros e a lista do período.</figcaption>
+        </figure>
+        <h3>Filtros e exportação</h3>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-filtros.jpg" alt="Filtros do diário">
+          <figcaption>Períodos rápidos (Hoje/Semana/Mês/Tudo), datas livres, busca por texto e exportação XLS<?= $role !== 'professor' ? ' — e o seletor de professor(a) para a consulta' : '' ?>.</figcaption>
+        </figure>
+        <?php if ($capable): ?>
+        <h3>Trabalhando nas etapas</h3>
+        <p>Cada etapa tem botões conforme o estado — os horários reais são gravados automaticamente no clique:</p>
+        <ul>
+          <li><b>Iniciar</b> → marca o início real da etapa;</li>
+          <li><b>Pausar</b> → congela a contagem para você atender outra coisa;</li>
+          <li><b>Retomar</b> → continua de onde parou (o tempo pausado <b>não conta</b> como trabalho);</li>
+          <li><b>Concluir</b> → marca o término real (se estiver pausada, encerra a pausa junto);</li>
+          <li><b>Editar</b> → ajusta os horários manualmente; <b>Refazer</b> → limpa horários e pausas.</li>
+        </ul>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-etapas.jpg" alt="Botões das etapas">
+          <figcaption>Atividade em andamento: a etapa ativa mostra Pausar e Concluir (destacados).</figcaption>
+        </figure>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-pausada.jpg" alt="Atividade pausada">
+          <figcaption>Atividade pausada: borda azul, selo "⏸ em pausa" e o botão Retomar (destacado). Use para alternar entre atividades.</figcaption>
+        </figure>
+        <div class="tut-tip">💡 O card da atividade tem os botões <b>Editar</b> (título, categoria, descrição) e <b>Excluir</b> (remove a atividade e todas as etapas).</div>
+        <?php else: ?>
+        <div class="tut-tip">👁 O perfil de gestão é <b>somente consulta</b>: escolha o professor no seletor, filtre o período e acompanhe — sem risco de alterar nada.</div>
+        <?php endif; ?>
+      </section>
+
+      <?php if ($capable): ?>
+      <!-- ═══════════ JORNADA ═══════════ -->
+      <section class="tut-section" id="jornada">
+        <img class="tut-hero" src="<?= $T ?>/hero-jornada.jpg" alt="Jornada e banco de horas">
+        <p>Na aba <b>🕐 Jornada</b> você cadastra sua semana de trabalho: marque os dias e informe <b>entrada e saída</b> de cada um (ex.: segunda a sexta, 07:00 às 14:40). Salve tudo de uma vez.</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-jornada.jpg" alt="Jornada semanal e banco de horas">
+          <figcaption>A semana completa e, abaixo, o extrato do banco de horas com o saldo.</figcaption>
+        </figure>
+        <h3>Avisos automáticos</h3>
+        <p>Com a jornada cadastrada, o sistema vigia o relógio para você (a verificação roda a cada minuto):</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-aviso.jpg" alt="Aviso de fim de jornada">
+          <figcaption>Faltando 30 minutos para o fim do expediente, o aviso amarelo aparece no topo de todas as abas.</figcaption>
+        </figure>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-banco.jpg" alt="Registro no banco de horas">
+          <figcaption>Passou do horário? O banner laranja mostra o tempo excedido e o botão (destacado) para creditar as horas no banco.</figcaption>
+        </figure>
+        <p>O crédito é calculado pelo servidor a partir dos seus <b>apontamentos reais</b> feitos após o fim da jornada, já descontando intervalos e pausas. É <b>um registro por dia</b>: se continuar trabalhando e clicar de novo, o valor é atualizado. O extrato permite excluir um crédito registrado por engano.</p>
+      </section>
+      <?php endif; ?>
+
+      <!-- ═══════════ RELATÓRIOS ═══════════ -->
+      <section class="tut-section" id="relatorios">
+        <img class="tut-hero" src="<?= $T ?>/hero-relatorios.jpg" alt="Relatórios">
+        <p>Na aba <b>🖨 Relatórios</b>, escolha <?= $role !== 'professor' ? 'o professor, ' : '' ?>o período e o tipo de relatório, e clique em <b>Gerar relatório</b>. A prévia aparece como um documento em fundo branco, pronto para impressão.</p>
+        <ul>
+          <li><b>Simplificado</b> — uma linha por dia com <b>início e término do trabalho apontado</b>, os intervalos e as horas trabalhadas líquidas. Dias com <code>*</code> têm etapas ainda sem registro real.</li>
+          <li><b>Detalhado</b> — todas as atividades e etapas do período, com previsão × real e as pausas.</li>
+        </ul>
+        <p>Os dois saem com os <b>campos de assinatura</b> — <?= e(DIRECTOR_NAME) ?> (<?= e(DIRECTOR_ROLE) ?>) e o professor (nome + RM) — na tela, na impressão e no PDF.</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-rel-simplificado.jpg" alt="Relatório simplificado">
+          <figcaption>Relatório simplificado gerado; os botões Imprimir e PDF (destacados) são liberados após gerar.</figcaption>
+        </figure>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-rel-detalhado.jpg" alt="Relatório detalhado">
+          <figcaption>O detalhado lista cada atividade com a tabela de etapas.</figcaption>
+        </figure>
+        <div class="tut-tip">💡 O botão <b>⬇ XLS</b> fica na aba Diário e exporta a planilha completa (uma linha por etapa, com professor, RM, pausas e durações líquidas).</div>
+      </section>
+
+      <?php if ($admin): ?>
+      <!-- ═══════════ CONTAS ═══════════ -->
+      <section class="tut-section" id="contas">
+        <img class="tut-hero" src="<?= $T ?>/hero-contas.jpg" alt="Contas da equipe">
+        <p>A aba <b>👥 Contas</b> é exclusiva do administrador. É aqui que você cria os acessos dos professores:</p>
+        <ol class="tut-steps">
+          <li>Preencha <b>nome completo</b>, <b>RM (matrícula)</b>, o <b>usuário de acesso</b> e a <b>senha inicial</b> (mínimo 8 caracteres) — combine com a pessoa que ela troque no primeiro login.</li>
+          <li>Defina as <b>etapas de trabalho</b> da função (quantidade, nomes e pesos %). Elas passam a preencher automaticamente o formulário de atividades daquele professor.</li>
+          <li>Clique em <b>Criar conta</b>.</li>
+        </ol>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-contas.jpg" alt="Gestão de contas">
+          <figcaption>Formulário de nova conta com o editor de etapas (destacado) e, abaixo, a lista de contas com Editar e Desativar/Reativar.</figcaption>
+        </figure>
+        <div class="tut-tip">💡 <b>Editar</b> permite ajustar nome, RM, etapas e redefinir a senha de qualquer conta (deixe a senha vazia para manter). <b>Desativar</b> bloqueia o login sem apagar o histórico — e você não consegue desativar a própria conta.</div>
+      </section>
+      <?php endif; ?>
+
+      <!-- ═══════════ DICAS ═══════════ -->
+      <section class="tut-section" id="dicas">
+        <div class="panel-card">
+          <div class="panel-title">💡 Dicas rápidas</div>
+          <ul class="tut-dicas">
+            <?php if ($capable): ?>
+            <li><b>Rotina sugerida do dia:</b> ao começar, registre o almoço previsto → proponha as atividades → use Iniciar/Concluir em cada etapa conforme trabalha → ao fim do dia, confira o aviso da jornada e registre eventuais horas extras.</li>
+            <li>Precisou atender outra demanda? <b>Pause</b> a etapa atual, registre e trabalhe na outra atividade, depois <b>Retome</b> — os tempos ficam corretos sozinhos.</li>
+            <li>Esqueceu de apontar em tempo real? Use <b>Editar</b> na etapa e informe os horários manualmente (o sistema recusa horários dentro de intervalos).</li>
+            <?php endif; ?>
+            <li>Os indicadores e relatórios mostram sempre <b>horas líquidas</b>: descansos, saídas médicas e pausas já descontados.</li>
+            <li>O rodapé de cada relatório indica quando ele foi emitido — imprima ou gere o PDF na hora de coletar as assinaturas.</li>
+            <?php if ($admin): ?>
+            <li>O rodapé do sistema mostra (só para você) qual banco de dados está em uso — útil ao conferir o phpMyAdmin.</li>
+            <?php endif; ?>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </main>

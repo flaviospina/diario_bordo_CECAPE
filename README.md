@@ -31,6 +31,9 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 - O diário exibe a jornada do dia; um aviso aparece quando faltam 30 minutos para o fim do expediente e, passado o horário, o sistema oferece **registrar as horas excedentes no banco de horas** (calculadas dos apontamentos reais, líquidas de intervalos e pausas; um registro por dia, atualizável).
 - Saldo e extrato do banco de horas na própria página da jornada.
 
+### Ajuda integrada
+- Página **Ajuda** (botão na barra superior) com tutorial ilustrado de cada funcionalidade — capturas reais do sistema com destaques e banners por seção, com conteúdo adaptado ao perfil de quem está logado (imagens em `assets/tutorial/`).
+
 ### Relatórios (com assinaturas)
 - **Simplificado**: uma linha por dia com início e término do trabalho apontado, descansos e horas trabalhadas líquidas. Se o dia tem registros reais, os horários exibidos são somente os reais; dias sem registro real usam a previsão, marcados com `*`.
 - **Detalhado**: todas as atividades e etapas do período, com previsão × real.

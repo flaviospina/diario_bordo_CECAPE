@@ -31,6 +31,20 @@ final class PanelController extends Controller
         ]);
     }
 
+    /** Tutorial do sistema (requer login). */
+    public function tutorial(): void
+    {
+        $user = Session::isLogged() ? User::find((int)Session::userId()) : null;
+        if (!$user || !(int)$user['active']) {
+            $this->redirectHome();
+        }
+        $this->view('panel/tutorial', [
+            'title' => 'Ajuda — ' . APP_NAME,
+            'page' => 'tutorial',
+            'user' => $user,
+        ]);
+    }
+
     /** Login por formulário HTML com redirect do servidor (funciona sem JS). */
     public function login(): void
     {
