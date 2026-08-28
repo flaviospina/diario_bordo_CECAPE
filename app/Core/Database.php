@@ -133,6 +133,19 @@ final class Database
             `note` VARCHAR(200) NOT NULL DEFAULT \'\',
             `created_at` VARCHAR(19) NOT NULL,
             UNIQUE KEY `uq_hour_bank` (`user_id`, `date`)' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `medical_leaves` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `user_id` INT UNSIGNED NOT NULL,
+            `type` VARCHAR(20) NOT NULL,
+            `date` VARCHAR(10) NOT NULL,
+            `end_date` VARCHAR(10) NOT NULL,
+            `start_time` VARCHAR(5) NULL,
+            `end_time` VARCHAR(5) NULL,
+            `note` VARCHAR(300) NOT NULL DEFAULT \'\',
+            `certificate_file` VARCHAR(80) NULL,
+            `certificate_name` VARCHAR(200) NULL,
+            `created_at` VARCHAR(19) NOT NULL,
+            KEY `idx_medical_user` (`user_id`, `date`, `end_date`)' . $suffix);
 
         // Alarga a coluna type de instalações anteriores (para "saida_medica")
         $len = $pdo->query("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
@@ -141,6 +154,8 @@ final class Database
         if ($len !== false && (int)$len < 20) {
             $pdo->exec('ALTER TABLE `breaks` MODIFY `type` VARCHAR(20) NOT NULL');
         }
+
+        self::moveLegacyMedicalBreaks($pdo);
 
         // Banco vazio: importa a instalação SQLite existente ou semeia as contas
         if ((int)$pdo->query('SELECT COUNT(*) FROM `users`')->fetchColumn() === 0) {
@@ -190,6 +205,8 @@ final class Database
             'breaks' => ['id', 'user_id', 'date', 'type', 'start_time', 'end_time'],
             'work_schedules' => ['id', 'user_id', 'weekday', 'enabled', 'start_time', 'end_time'],
             'hour_bank' => ['id', 'user_id', 'date', 'minutes', 'note', 'created_at'],
+            'medical_leaves' => ['id', 'user_id', 'type', 'date', 'end_date', 'start_time', 'end_time',
+                                 'note', 'certificate_file', 'certificate_name', 'created_at'],
         ];
         $mysql->beginTransaction();
         try {
@@ -356,6 +373,19 @@ final class Database
             created_at TEXT NOT NULL,
             UNIQUE(user_id, date)
         )');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS medical_leaves (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            start_time TEXT,
+            end_time TEXT,
+            note TEXT NOT NULL DEFAULT "",
+            certificate_file TEXT,
+            certificate_name TEXT,
+            created_at TEXT NOT NULL
+        )');
 
         // Banco antigo (single-user): ganha a coluna user_id antes dos índices
         $cols = array_column($pdo->query('PRAGMA table_info(activities)')->fetchAll(), 'name');
@@ -368,6 +398,9 @@ final class Database
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_breaks_user ON breaks(user_id, date)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_phase_pauses ON phase_pauses(phase_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_medical_user ON medical_leaves(user_id, date, end_date)');
+
+        self::moveLegacyMedicalBreaks($pdo);
 
         // Instalação antiga sem usuários: semeia herdando a senha legada
         if ((int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0) {
@@ -381,6 +414,33 @@ final class Database
     }
 
     /* ================= Comum ================= */
+
+    /**
+     * Migra saídas médicas registradas como "descanso" em versões anteriores
+     * para a tabela própria de registros de saúde.
+     */
+    private static function moveLegacyMedicalBreaks(PDO $pdo): void
+    {
+        $rows = $pdo->query("SELECT * FROM breaks WHERE type = 'saida_medica'")->fetchAll();
+        if (!$rows) {
+            return;
+        }
+        $ins = $pdo->prepare('INSERT INTO medical_leaves (user_id, type, date, end_date, start_time, end_time, note, created_at)
+                              VALUES (:u, :t, :d, :ed, :s, :e, :n, :c)');
+        foreach ($rows as $r) {
+            $ins->execute([
+                ':u' => $r['user_id'],
+                ':t' => 'saida',
+                ':d' => $r['date'],
+                ':ed' => $r['date'],
+                ':s' => $r['start_time'],
+                ':e' => $r['end_time'],
+                ':n' => '',
+                ':c' => date('Y-m-d H:i:s'),
+            ]);
+        }
+        $pdo->exec("DELETE FROM breaks WHERE type = 'saida_medica'");
+    }
 
     /** Senha do admin gravada por versões antigas (single-user) do sistema. */
     private static function legacySqliteHash(PDO $sqlite): ?string

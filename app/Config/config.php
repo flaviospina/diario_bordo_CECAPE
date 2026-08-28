@@ -44,8 +44,15 @@ const DIRECTOR_ROLE = 'Direção · CECAPE';
 // Perfis de acesso
 const ROLE_LABELS = ['admin' => 'Administrador', 'gestor' => 'Gestão', 'professor' => 'Professor'];
 
-// Tipos de intervalo registráveis no dia de trabalho
-const BREAK_TYPES = ['almoco' => 'Almoço', 'janta' => 'Janta', 'saida_medica' => 'Saída médica'];
+// Tipos de descanso registráveis no dia de trabalho
+const BREAK_TYPES = ['almoco' => 'Almoço', 'janta' => 'Janta'];
+
+// Registros de saúde (separados dos descansos)
+const HEALTH_TYPES = ['saida' => 'Saída médica', 'afastamento' => 'Afastamento médico'];
+
+// Atestado médico anexado aos registros de saúde
+const ATESTADO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const ATESTADO_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
 
 // Aviso de fim de jornada: alerta quando faltarem até N minutos
 const JORNADA_WARN_MINUTES = 30;

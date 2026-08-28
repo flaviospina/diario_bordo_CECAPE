@@ -61,6 +61,11 @@ $router->add('POST', 'api/phase', ApiController::class, 'phase');
 $router->add('POST', 'api/break-create', ApiController::class, 'breakCreate');
 $router->add('POST', 'api/break-delete', ApiController::class, 'breakDelete');
 
+// API — saúde (saídas médicas e afastamentos, com atestado)
+$router->add('POST', 'api/health-create', ApiController::class, 'healthCreate');
+$router->add('POST', 'api/health-delete', ApiController::class, 'healthDelete');
+$router->add('GET', 'api/atestado', ApiController::class, 'atestado');
+
 // API — jornada de trabalho e banco de horas
 $router->add('GET', 'api/schedule', ApiController::class, 'schedule');
 $router->add('POST', 'api/schedule-save', ApiController::class, 'scheduleSave');

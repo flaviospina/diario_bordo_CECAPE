@@ -114,7 +114,7 @@ a { text-decoration: none; color: inherit; }
 /* ── KPI CARDS (resumo) ────────────────────────────────────── */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -148,6 +148,7 @@ a { text-decoration: none; color: inherit; }
 .kpi-pink   .kpi-value { color: var(--pink); }
 .kpi-yellow .kpi-value { color: var(--yellow); }
 .kpi-blue   .kpi-value { color: var(--blue); }
+.kpi-red    .kpi-value { color: var(--red); }
 
 /* ── PANEL CARD ────────────────────────────────────────────── */
 .panel-card {
@@ -634,13 +635,48 @@ a.link:hover { text-decoration: underline; }
 .break-del {
   background: none;
   border: none;
-  color: var(--pink);
+  color: inherit;
   font-size: 11px;
   cursor: pointer;
   padding: 0 2px;
   opacity: .7;
 }
 .break-del:hover { opacity: 1; }
+
+/* Registros de saúde (separados dos descansos) */
+.health-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #f87171;
+  background: rgba(239,68,68,.09);
+  border: 1px solid rgba(239,68,68,.3);
+  border-radius: 20px;
+  padding: 3px 11px;
+  white-space: nowrap;
+}
+.health-atestado {
+  color: #fca5a5;
+  font-weight: 700;
+  text-decoration: underline;
+}
+.health-atestado:hover { color: #fff; }
+.health-card { border-left: 3px solid var(--red); }
+.form-file { padding: 8px 11px; font-size: 13px; }
+.form-file::file-selector-button {
+  background: rgba(34,211,238,.12);
+  border: 1px solid rgba(34,211,238,.3);
+  color: var(--cyan);
+  border-radius: 7px;
+  padding: 5px 12px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 12px;
+}
 .form-group-btn { display: flex; align-items: flex-end; }
 .radio-row { display: flex; gap: 16px; padding: 10px 0; }
 .radio-opt {

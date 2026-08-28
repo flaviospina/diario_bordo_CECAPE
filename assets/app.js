@@ -13,14 +13,15 @@ let STATE = {
   role: null, userId: 0, userName: '', userRm: '',
   director: '', directorRole: '',
   professors: [], profId: 0, professor: null,
-  activities: [], breaks: [], formBreaks: [], jornada: [],
+  activities: [], breaks: [], formBreaks: [], jornada: [], health: [],
   schedule: [], hourBank: [], hourBankTotal: 0,
   phasesTemplate: [], reportData: null, reportType: 'simplificado'
 };
 
 const STATUS_LABEL = { prevista: 'Prevista', em_andamento: 'Em andamento', pausada: 'Pausada', concluida: 'Concluída' };
-const BREAK_LABEL = { almoco: 'Almoço', janta: 'Janta', saida_medica: 'Saída médica' };
-const BREAK_ICON = { almoco: '☕', janta: '🍽', saida_medica: '🏥' };
+const BREAK_LABEL = { almoco: 'Almoço', janta: 'Janta' };
+const BREAK_ICON = { almoco: '☕', janta: '🍽' };
+const HEALTH_LABEL = { saida: 'Saída médica', afastamento: 'Afastamento médico' };
 const JORNADA_WARN_MIN = 30; // avisa quando faltar até 30min para o fim da jornada
 const WEEKDAYS = [
   { w: 1, label: 'Segunda-feira' }, { w: 2, label: 'Terça-feira' },
@@ -173,8 +174,64 @@ async function load() {
   STATE.activities = data.activities;
   STATE.breaks = data.breaks;
   STATE.jornada = data.jornada || [];
+  STATE.health = data.health || [];
   renderStats();
   renderList();
+}
+
+/* ---------------- Saúde: janelas e horas sobre a jornada ---------------- */
+
+/** Janelas bloqueadas (descansos + saídas médicas; sem retorno vale até 23:59). */
+function blockWindows(breaks, health) {
+  return (breaks || []).concat((health || [])
+    .filter(l => l.type === 'saida')
+    .map(l => ({ date: l.date, start_time: l.start_time, end_time: l.end_time || '23:59' })));
+}
+
+function jornadaOf(day, jornada) {
+  const wd = new Date(day + 'T12:00:00').getDay();
+  const s = (jornada || []).find(x => Number(x.weekday) === wd && Number(x.enabled) === 1);
+  return s ? { start: s.start_time.slice(0, 5), end: s.end_time.slice(0, 5) } : null;
+}
+
+/** Dias (ISO) cobertos por um afastamento, limitados a um intervalo opcional. */
+function afastDays(l, from, to) {
+  const out = [];
+  let d = new Date(l.date + 'T12:00:00');
+  const end = new Date((l.end_date || l.date) + 'T12:00:00');
+  while (d <= end) {
+    const iso = isoDate(d);
+    if ((!from || iso >= from) && (!to || iso <= to)) out.push(iso);
+    d = new Date(d.getTime() + 86400000);
+  }
+  return out;
+}
+
+/**
+ * Horas de TRABALHO usadas pelos registros de saúde no período:
+ * saída médica = sobreposição [saída, retorno ?? fim do dia] × jornada do dia;
+ * afastamento = jornada completa de cada dia coberto. Tempo fora da jornada
+ * não conta — desconta-se apenas o que era horário de trabalho.
+ */
+function healthUsage(health, jornada, from, to) {
+  let min = 0, days = 0, saidas = 0;
+  for (const l of (health || [])) {
+    if (l.type === 'saida') {
+      saidas++;
+      const j = jornadaOf(l.date, jornada);
+      if (!j) continue;
+      const s = (l.start_time > j.start) ? l.start_time : j.start;
+      const e = ((l.end_time || '23:59') < j.end) ? (l.end_time || '23:59') : j.end;
+      min += Math.max(0, minutesHM(s, e));
+    } else {
+      for (const day of afastDays(l, from, to)) {
+        days++;
+        const j = jornadaOf(day, jornada);
+        if (j) min += minutesHM(j.start, j.end);
+      }
+    }
+  }
+  return { min, days, saidas };
 }
 
 /** Minutos de um intervalo que caem dentro dos descansos do dia. */
@@ -221,11 +278,14 @@ function realDuration(a, breaks) {
 
 function renderStats() {
   const acts = STATE.activities;
+  const wins = blockWindows(STATE.breaks, STATE.health);
   const done = acts.filter(a => a.status === 'concluida').length;
   const inProgress = acts.filter(a => a.status === 'em_andamento' || a.status === 'pausada').length;
   let totalMin = 0;
-  acts.forEach(a => { totalMin += realDuration(a, STATE.breaks) || 0; });
+  acts.forEach(a => { totalMin += realDuration(a, wins) || 0; });
   const restMin = STATE.breaks.reduce((s, b) => s + minutesHM(b.start_time, b.end_time), 0);
+  const { from, to } = currentFilters();
+  const saude = healthUsage(STATE.health, STATE.jornada, from || null, to || null);
   const days = new Set(acts.map(a => a.date)).size;
   $('#stats').innerHTML = `
     <div class="kpi-card kpi-orange"><div class="kpi-value">${acts.length}</div><div class="kpi-label">Atividades</div></div>
@@ -233,6 +293,7 @@ function renderStats() {
     <div class="kpi-card kpi-yellow"><div class="kpi-value">${inProgress}</div><div class="kpi-label">Em andamento</div></div>
     <div class="kpi-card kpi-cyan"><div class="kpi-value">${fmtDuration(totalMin)}</div><div class="kpi-label">Horas registradas</div></div>
     <div class="kpi-card kpi-pink"><div class="kpi-value">${fmtDuration(restMin)}</div><div class="kpi-label">Descanso</div></div>
+    <div class="kpi-card kpi-red"><div class="kpi-value">${fmtDuration(saude.min)}${saude.days ? `<small> · ${saude.days}d afast.</small>` : ''}</div><div class="kpi-label">Saúde (horas de jornada)</div></div>
     <div class="kpi-card kpi-purple"><div class="kpi-value">${days}</div><div class="kpi-label">Dias de trabalho</div></div>`;
 }
 
@@ -240,7 +301,7 @@ function phaseRowHtml(p, editable) {
   const started = !!p.real_start, done = !!p.real_end;
   const paused = !done && isPaused(p);
   const cls = done ? 'done' : (paused ? 'paused' : (started ? 'started' : ''));
-  const realDur = realNetMinutes(p.real_start, p.real_end, STATE.breaks, p.pauses);
+  const realDur = realNetMinutes(p.real_start, p.real_end, blockWindows(STATE.breaks, STATE.health), p.pauses);
   const pausedMin = pauseMinutes(p.pauses);
   let actions = '';
   if (editable) {
@@ -271,8 +332,9 @@ function phaseRowHtml(p, editable) {
 }
 
 function activityCard(a, editable) {
-  const dur = realDuration(a, STATE.breaks);
-  const prevDur = realNetMinutes(a.prev_start, a.prev_end, STATE.breaks);
+  const wins = blockWindows(STATE.breaks, STATE.health);
+  const dur = realDuration(a, wins);
+  const prevDur = realNetMinutes(a.prev_start, a.prev_end, wins);
   return `
   <article class="activity st-${a.status}" data-id="${a.id}">
     <div class="activity-head">
@@ -299,6 +361,22 @@ function breakChip(b, editable) {
   return `<span class="break-chip">${BREAK_ICON[b.type] || '☕'} ${BREAK_LABEL[b.type] || b.type} ${esc(b.start_time)}–${esc(b.end_time)}${editable ? ` <button class="break-del" data-break="${b.id}" title="Remover intervalo">✕</button>` : ''}</span>`;
 }
 
+function healthChip(l, day, editable) {
+  let periodo;
+  if (l.type === 'saida') {
+    periodo = `${esc(l.start_time)} → ${l.end_time ? esc(l.end_time) : 'sem retorno'}`;
+  } else {
+    periodo = l.date === (l.end_date || l.date)
+      ? 'dia inteiro'
+      : `${l.date.split('-').reverse().join('/')} a ${(l.end_date || l.date).split('-').reverse().join('/')}`;
+  }
+  const atestado = l.certificate_file
+    ? ` <a class="health-atestado" href="index.php?r=api/atestado&id=${l.id}" title="Baixar atestado (${esc(l.certificate_name || '')})">📎 atestado</a>`
+    : '';
+  const del = editable ? ` <button class="break-del" data-health="${l.id}" title="Remover registro de saúde">✕</button>` : '';
+  return `<span class="health-chip">🏥 ${HEALTH_LABEL[l.type] || l.type} ${periodo}${l.note ? ` · ${esc(l.note)}` : ''}${atestado}${del}</span>`;
+}
+
 function jornadaChip(day) {
   const wd = new Date(day + 'T12:00:00').getDay();
   const s = STATE.jornada.find(x => Number(x.weekday) === wd && Number(x.enabled) === 1);
@@ -310,7 +388,11 @@ function renderList() {
   const editable = canEdit();
   const wrap = $('#list');
   const acts = STATE.activities;
-  const days = [...new Set([...acts.map(a => a.date), ...STATE.breaks.map(b => b.date)])].sort().reverse();
+  const { from, to } = currentFilters();
+  const wins = blockWindows(STATE.breaks, STATE.health);
+  const healthDays = STATE.health.flatMap(l =>
+    l.type === 'afastamento' ? afastDays(l, from || null, to || null) : [l.date]);
+  const days = [...new Set([...acts.map(a => a.date), ...STATE.breaks.map(b => b.date), ...healthDays])].sort().reverse();
   if (!days.length) {
     wrap.innerHTML = `<div class="empty">Nenhuma atividade registrada no período selecionado.</div>`;
     return;
@@ -318,7 +400,9 @@ function renderList() {
   wrap.innerHTML = days.map(day => {
     const list = acts.filter(a => a.date === day);
     const dayBreaks = STATE.breaks.filter(b => b.date === day);
-    const dayMin = list.reduce((s, a) => s + (realDuration(a, STATE.breaks) || 0), 0);
+    const dayHealth = STATE.health.filter(l =>
+      l.type === 'saida' ? l.date === day : (day >= l.date && day <= (l.end_date || l.date)));
+    const dayMin = list.reduce((s, a) => s + (realDuration(a, wins) || 0), 0);
     return `
     <section class="day-group">
       <div class="day-head">
@@ -326,6 +410,7 @@ function renderList() {
         <span>${list.length} atividade${list.length !== 1 ? 's' : ''}${dayMin ? ' · ' + fmtDuration(dayMin) + ' registradas' : ''}</span>
         ${jornadaChip(day)}
         ${dayBreaks.map(b => breakChip(b, editable)).join('')}
+        ${dayHealth.map(l => healthChip(l, day, editable)).join('')}
       </div>
       ${list.map(a => activityCard(a, editable)).join('') || ''}
     </section>`;
@@ -397,6 +482,16 @@ function bindListEvents() {
       toast('Descanso removido.');
     } catch (e) { toast(e.message); }
   }));
+
+  $$('#list [data-health]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Remover este registro de saúde (e o atestado anexado, se houver)?')) return;
+    try {
+      await api('health-delete', { body: { id: btn.dataset.health } });
+      await load();
+      await loadFormBreaks();
+      toast('Registro de saúde removido.');
+    } catch (e) { toast(e.message); }
+  }));
 }
 
 /* ---------------- Exportação XLS (diário) ---------------- */
@@ -404,6 +499,7 @@ function bindListEvents() {
 function exportRows() {
   const rows = [];
   const prof = STATE.professor || {};
+  const wins = blockWindows(STATE.breaks, STATE.health);
   STATE.activities.forEach(a => {
     a.phases.forEach(p => {
       rows.push({
@@ -419,7 +515,7 @@ function exportRows() {
         'Início (Real)': fmtDateTimeShort(p.real_start),
         'Término (Real)': fmtDateTimeShort(p.real_end),
         'Pausas': pauseMinutes(p.pauses) ? fmtDuration(pauseMinutes(p.pauses)) : '',
-        'Duração real': fmtDuration(realNetMinutes(p.real_start, p.real_end, STATE.breaks, p.pauses)),
+        'Duração real': fmtDuration(realNetMinutes(p.real_start, p.real_end, wins, p.pauses)),
         'Descrição': a.description || ''
       });
     });
@@ -508,7 +604,7 @@ function computePreview(date, startTime, duration, phases, breaks = []) {
         const chunk = Math.min(rem, Math.round((next - t) / 60000));
         t = new Date(t.getTime() + chunk * 60000);
         rem -= chunk;
-        t = skip(t);
+        if (rem > 0) t = skip(t);
       }
     }
     return t;
@@ -529,13 +625,13 @@ function computePreview(date, startTime, duration, phases, breaks = []) {
   });
 }
 
-/** Descansos do dia selecionado no formulário (para a previsão pular). */
+/** Janelas do dia selecionado no formulário (descansos + saídas médicas). */
 async function loadFormBreaks() {
   const d = $('#a-date')?.value;
   if (!d) { STATE.formBreaks = []; return; }
   try {
     const data = await api('list', { qs: `from=${d}&to=${d}&user_id=${STATE.userId}` });
-    STATE.formBreaks = data.breaks;
+    STATE.formBreaks = blockWindows(data.breaks, data.health);
   } catch { STATE.formBreaks = []; }
   renderPreview();
 }
@@ -557,8 +653,8 @@ function renderPreview() {
   let html = '<span>Previsão gerada automaticamente: </span>' +
     items.map(p => `<b>${esc(p.name)}</b> ${hhmm(p.start)}–${hhmm(p.end)}`).join(' · ');
   if (dayBreaks.length) {
-    html += `<br><span class="preview-break">☕ Respeita o descanso: ${dayBreaks.map(b =>
-      `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`).join(' · ')}</span>`;
+    html += `<br><span class="preview-break">☕ Respeita os intervalos do dia: ${dayBreaks.map(b =>
+      `${BREAK_LABEL[b.type] || 'Saída médica'} ${b.start_time}–${b.end_time}`).join(' · ')}</span>`;
   }
   box.innerHTML = html;
 }
@@ -730,6 +826,56 @@ async function registerOvertime() {
     await loadJornadaData();
     renderHourBank();
     updateJornadaFlag();
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------------- Saúde: formulário ---------------- */
+
+function toggleHealthFields() {
+  const afast = $('#h-type').value === 'afastamento';
+  $$('.h-saida').forEach(el => { el.style.display = afast ? 'none' : ''; });
+  $$('.h-afast').forEach(el => { el.style.display = afast ? '' : 'none'; });
+  $('#h-date-label').innerHTML = afast ? 'De (data inicial) <span class="req">*</span>' : 'Data <span class="req">*</span>';
+}
+
+async function submitHealth(ev) {
+  ev.preventDefault();
+  const type = $('#h-type').value;
+  const fd = new FormData();
+  fd.append('type', type);
+  fd.append('date', $('#h-date').value);
+  fd.append('note', $('#h-note').value.trim());
+  if (type === 'saida') {
+    if (!$('#h-date').value || !$('#h-start').value) {
+      return toast('Informe a data e o horário de saída.');
+    }
+    fd.append('start_time', $('#h-start').value);
+    fd.append('end_time', $('#h-end').value); // vazio = não retornou
+  } else {
+    if (!$('#h-date').value) return toast('Informe a data inicial do afastamento.');
+    fd.append('end_date', $('#h-end-date').value || $('#h-date').value);
+  }
+  const file = $('#h-file').files[0];
+  if (file) {
+    if (file.size > 5 * 1024 * 1024) return toast('O atestado deve ter no máximo 5 MB.');
+    fd.append('atestado', file);
+  }
+  try {
+    const res = await fetch('index.php?r=api/health-create', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken() },
+      body: fd
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Erro ao registrar.');
+    toast(type === 'saida'
+      ? ($('#h-end').value ? 'Saída médica registrada.' : 'Saída médica registrada — sem retorno, contam as horas restantes da jornada.')
+      : 'Afastamento médico registrado — os dias ficam bloqueados para apontamentos.');
+    $('#h-start').value = $('#h-end').value = $('#h-note').value = '';
+    $('#h-end-date').value = '';
+    $('#h-file').value = '';
+    await load();
+    await loadFormBreaks();
   } catch (e) { toast(e.message); }
 }
 
@@ -935,20 +1081,41 @@ function dayBounds(list) {
 }
 
 function simplifiedRows(data) {
-  const days = [...new Set([...data.activities.map(a => a.date), ...data.breaks.map(b => b.date)])].sort();
+  const health = data.health || [];
+  const afastadoDias = health.filter(l => l.type === 'afastamento')
+    .flatMap(l => afastDays(l, $('#r-from').value || null, $('#r-to').value || null));
+  const days = [...new Set([
+    ...data.activities.map(a => a.date),
+    ...data.breaks.map(b => b.date),
+    ...health.filter(l => l.type === 'saida').map(l => l.date),
+    ...afastadoDias
+  ])].sort();
   return days.map(day => {
+    // Dia de afastamento médico: linha própria, sem horários de trabalho
+    if (afastadoDias.includes(day)) {
+      const l = health.find(x => x.type === 'afastamento' && day >= x.date && day <= (x.end_date || x.date));
+      return {
+        day, inicio: '—', fim: '—',
+        descanso: `Afastamento médico${l && l.certificate_file ? ' (com atestado)' : ''}`,
+        liquido: null, marcador: '', afastado: true
+      };
+    }
     const list = data.activities.filter(a => a.date === day);
     const dayBreaks = data.breaks.filter(b => b.date === day);
+    const daySaidas = health.filter(l => l.type === 'saida' && l.date === day);
+    const wins = blockWindows(dayBreaks, daySaidas);
     const { inicio, fim, allReal } = dayBounds(list);
-    // Desconta o descanso dentro do expediente e as pausas das etapas do dia
+    // Desconta intervalos dentro do expediente e as pausas das etapas do dia
     const dayPauses = list.reduce((s, a) => s + a.phases.reduce((s2, p) => s2 + pauseMinutes(p.pauses), 0), 0);
-    const base = realNetMinutes(inicio, fim, dayBreaks);
+    const base = realNetMinutes(inicio, fim, wins);
     const liquido = base != null ? Math.max(0, base - dayPauses) : null;
+    const partes = dayBreaks.map(b => `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`)
+      .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'}${l.certificate_file ? ' (atestado)' : ''}`));
     return {
       day,
       inicio: inicio ? fmtTime(inicio) : '—',
       fim: fim ? fmtTime(fim) : '—',
-      descanso: dayBreaks.map(b => `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`).join('; ') || '—',
+      descanso: partes.join('; ') || '—',
       liquido,
       marcador: allReal ? '' : ' *'
     };
@@ -1013,15 +1180,29 @@ function buildSimplifiedHtml(data) {
 
 function buildDetailedHtml(data) {
   const prof = data.professor;
-  const days = [...new Set([...data.activities.map(a => a.date), ...data.breaks.map(b => b.date)])].sort();
+  const health = data.health || [];
+  const wins = blockWindows(data.breaks, health);
+  const afastadoDias = health.filter(l => l.type === 'afastamento')
+    .flatMap(l => afastDays(l, $('#r-from').value || null, $('#r-to').value || null));
+  const days = [...new Set([
+    ...data.activities.map(a => a.date), ...data.breaks.map(b => b.date),
+    ...health.filter(l => l.type === 'saida').map(l => l.date), ...afastadoDias
+  ])].sort();
   let totalMin = 0;
-  data.activities.forEach(a => { totalMin += realDuration(a, data.breaks) || 0; });
+  data.activities.forEach(a => { totalMin += realDuration(a, wins) || 0; });
   const body = days.map(day => {
+    if (afastadoDias.includes(day)) {
+      return `<div class="p-day"><h2>${fmtDay(day)} — 🏥 Afastamento médico</h2>
+        <p class="p-desc">Dia coberto por afastamento médico registrado no sistema.</p></div>`;
+    }
     const list = data.activities.filter(a => a.date === day);
     const dayBreaks = data.breaks.filter(b => b.date === day);
+    const daySaidas = health.filter(l => l.type === 'saida' && l.date === day);
+    const extras = dayBreaks.map(b => `${BREAK_LABEL[b.type]} ${b.start_time}–${b.end_time}`)
+      .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'}`));
     return `
     <div class="p-day">
-      <h2>${fmtDay(day)}${dayBreaks.length ? ' — ' + dayBreaks.map(b => `${BREAK_LABEL[b.type]} ${b.start_time}–${b.end_time}`).join(' · ') : ''}</h2>
+      <h2>${fmtDay(day)}${extras.length ? ' — ' + extras.join(' · ') : ''}</h2>
       ${list.map(a => `
         <div class="p-act">
           <h3>${esc(a.title)} <small>[${STATUS_LABEL[a.status]}${a.category ? ' · ' + esc(a.category) : ''}]</small></h3>
@@ -1032,7 +1213,7 @@ function buildDetailedHtml(data) {
               <td>${esc(p.name)}${pauseMinutes(p.pauses) ? ` <small>(pausas: ${fmtDuration(pauseMinutes(p.pauses))})</small>` : ''}</td>
               <td>${fmtTime(p.prev_start)}</td><td>${fmtTime(p.prev_end)}</td>
               <td>${fmtTime(p.real_start)}</td><td>${fmtTime(p.real_end)}</td>
-              <td>${fmtDuration(realNetMinutes(p.real_start, p.real_end, data.breaks, p.pauses))}</td>
+              <td>${fmtDuration(realNetMinutes(p.real_start, p.real_end, wins, p.pauses))}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>`).join('') || '<p class="p-desc">Sem atividades neste dia (apenas descanso registrado).</p>'}
@@ -1142,7 +1323,7 @@ function exportReportPDF() {
       a.date.split('-').reverse().join('/'), a.title, p.name,
       fmtTime(p.prev_start) + '–' + fmtTime(p.prev_end),
       fmtTime(p.real_start) + '–' + fmtTime(p.real_end),
-      fmtDuration(realNetMinutes(p.real_start, p.real_end, data.breaks, p.pauses)),
+      fmtDuration(realNetMinutes(p.real_start, p.real_end, blockWindows(data.breaks, data.health), p.pauses)),
       STATUS_LABEL[a.status]
     ])));
     doc.autoTable({
@@ -1203,6 +1384,9 @@ async function initPanel() {
     $('#a-date').addEventListener('input', loadFormBreaks);
     $('#activity-form').addEventListener('submit', submitActivity);
     $('#break-form').addEventListener('submit', submitBreak);
+    $('#h-date').value = isoDate(now);
+    $('#h-type').addEventListener('change', toggleHealthFields);
+    $('#health-form').addEventListener('submit', submitHealth);
     await loadFormBreaks();
 
     // Jornada de trabalho e banco de horas

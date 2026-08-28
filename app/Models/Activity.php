@@ -163,7 +163,9 @@ final class Activity
                     $chunk = min($rem, intdiv($next->getTimestamp() - $t->getTimestamp(), 60));
                     $t->modify("+{$chunk} minutes");
                     $rem -= $chunk;
-                    $t = $skip($t);
+                    if ($rem > 0) {
+                        $t = $skip($t);
+                    }
                 }
             }
             return $t;

@@ -77,26 +77,32 @@ $T = 'assets/tutorial';
 
       <!-- ═══════════ INTERVALOS ═══════════ -->
       <section class="tut-section" id="intervalos">
-        <img class="tut-hero" src="<?= $T ?>/hero-intervalos.jpg" alt="Descansos e saídas">
-        <p>Ainda na aba Registrar, o card <b>"Registrar descanso ou saída"</b> aponta os intervalos do dia. Há três tipos:</p>
+        <img class="tut-hero" src="<?= $T ?>/hero-intervalos.jpg" alt="Descansos e saúde">
+        <p>Ainda na aba Registrar há dois cards separados: <b>"Registrar descanso"</b> (☕ almoço e 🍽 janta) e <b>"🏥 Saúde"</b> (saída médica e afastamento). Os registros de saúde ficam <b>separados dos descansos</b>, com indicador próprio no painel.</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-descanso.jpg" alt="Registro de descanso">
+          <figcaption>Descanso: escolha o tipo, a data e o intervalo. Para excluir, use o ✕ na etiqueta do Diário.</figcaption>
+        </figure>
+        <h3>Saída médica e afastamento</h3>
         <ul>
-          <li><b>☕ Almoço</b> e <b>🍽 Janta</b> — horários de descanso da jornada;</li>
-          <li><b>🏥 Saída médica</b> — informe o horário de <b>saída</b> e o de <b>retorno</b>.</li>
+          <li><b>Saída médica</b> — informe a data e o horário de <b>saída</b>; o <b>retorno é opcional</b>. Sem retorno, o sistema entende que você não voltou e conta as horas restantes <b>da sua jornada</b> como usadas pela saída.</li>
+          <li><b>Afastamento médico</b> — informe a data inicial e a final (<b>1 dia ou mais</b>); os dias inteiros ficam bloqueados para apontamentos.</li>
+          <li><b>Atestado médico</b> — anexe o arquivo (PDF/JPG/PNG, até 5&nbsp;MB) para ficar registrado; ele fica guardado com acesso restrito e pode ser baixado pela etiqueta 📎 no Diário (você, a gestão e a administração).</li>
         </ul>
         <figure class="tut-img">
-          <img src="<?= $T ?>/tela-descanso.jpg" alt="Registro de descanso ou saída">
-          <figcaption>Escolha o tipo (destacado), a data e o intervalo. Para excluir um intervalo, use o ✕ na etiqueta dele no Diário.</figcaption>
+          <img src="<?= $T ?>/tela-saude.jpg" alt="Registro de saúde">
+          <figcaption>O card de Saúde: o formulário muda conforme o tipo (saída com horários; afastamento com período em dias).</figcaption>
         </figure>
-        <p>O intervalo registrado é uma <b>janela protegida</b>:</p>
+        <p>Descansos e saídas médicas são <b>janelas protegidas</b>:</p>
         <ul>
           <li>a previsão de novas atividades <b>pula</b> o período;</li>
-          <li><b>nenhum registro é aceito</b> dentro dele — os botões Iniciar/Pausar/Concluir e a edição manual são recusados com aviso;</li>
-          <li>o tempo é <b>descontado</b> de todas as horas (indicadores, diário e relatórios);</li>
-          <li>intervalos do mesmo dia não podem se sobrepor.</li>
+          <li><b>nenhum registro é aceito</b> dentro dele — botões e edição manual são recusados com aviso (afastamento bloqueia o dia inteiro);</li>
+          <li>o tempo é <b>descontado</b> das horas de trabalho — no caso da saúde, desconta-se <b>apenas o que era horário de jornada</b>, nunca o tempo total fora;</li>
+          <li>descansos do mesmo dia não podem se sobrepor.</li>
         </ul>
         <figure class="tut-img">
           <img src="<?= $T ?>/tela-chips.jpg" alt="Etiquetas do dia">
-          <figcaption>No Diário, cada dia mostra a jornada e os intervalos registrados como etiquetas.</figcaption>
+          <figcaption>No Diário, cada dia mostra a jornada, os descansos e os registros de saúde como etiquetas.</figcaption>
         </figure>
       </section>
       <?php endif; ?>

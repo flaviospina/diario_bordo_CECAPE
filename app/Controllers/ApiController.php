@@ -13,6 +13,7 @@ use App\Models\Jornada;
 use App\Models\LoginAttempt;
 use App\Models\Pausa;
 use App\Models\Phase;
+use App\Models\Saude;
 use App\Models\User;
 
 /**
@@ -114,6 +115,7 @@ final class ApiController extends Controller
             'activities' => Activity::allWithPhases((int)$target['id'], $from, $to, $q),
             'breaks' => Pausa::forUser((int)$target['id'], $from, $to),
             'jornada' => Jornada::forUser((int)$target['id']),
+            'health' => Saude::forUser((int)$target['id'], $from, $to),
         ]);
     }
 
@@ -148,8 +150,16 @@ final class ApiController extends Controller
         $me = User::find((int)Session::userId());
         $phasesIn = $this->sanitizePhases($data['phases'] ?? null) ?: User::phases($me);
 
-        // A previsão respeita os descansos já registrados para o dia
+        // A previsão respeita os descansos e as saídas médicas do dia;
+        // dias de afastamento não aceitam atividades
         $breaks = Pausa::forUser((int)Session::userId(), $date, $date);
+        foreach (Saude::forUser((int)Session::userId(), $date, $date) as $l) {
+            if ($l['type'] === 'afastamento') {
+                $this->json(['error' => 'Há afastamento médico registrado neste dia — não é possível propor atividades.'], 422);
+            }
+            $breaks[] = ['date' => $date, 'start_time' => $l['start_time'],
+                         'end_time' => $l['end_time'] ?: '23:59'];
+        }
         $previews = Activity::buildPhasePreviews($date, $startTime, $duration, $phasesIn, $breaks);
         $id = Activity::create(
             (int)Session::userId(),
@@ -305,6 +315,111 @@ final class ApiController extends Controller
         $this->json(['ok' => true]);
     }
 
+    /* ---------------- Saúde (saídas médicas e afastamentos) ---------------- */
+
+    /** Cria um registro de saúde; aceita multipart com o atestado anexado. */
+    public function healthCreate(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $type = (string)($_POST['type'] ?? '');
+        $date = (string)($_POST['date'] ?? '');
+        $note = mb_substr(trim((string)($_POST['note'] ?? '')), 0, 300);
+        if (!isset(HEALTH_TYPES[$type]) || !$this->isValidDate($date)) {
+            $this->json(['error' => 'Informe o tipo (saída médica ou afastamento) e a data.'], 422);
+        }
+
+        if ($type === 'saida') {
+            $start = (string)($_POST['start_time'] ?? '');
+            $end = trim((string)($_POST['end_time'] ?? ''));
+            if (!$this->isValidTime($start)) {
+                $this->json(['error' => 'Informe o horário de saída.'], 422);
+            }
+            if ($end !== '' && (!$this->isValidTime($end) || $end <= $start)) {
+                $this->json(['error' => 'O horário de retorno deve ser depois da saída (ou deixe vazio se não retornou).'], 422);
+            }
+            $record = ['type' => 'saida', 'date' => $date, 'end_date' => $date,
+                       'start_time' => $start, 'end_time' => $end === '' ? null : $end];
+        } else {
+            $endDate = (string)($_POST['end_date'] ?? '');
+            if ($endDate === '') {
+                $endDate = $date;
+            }
+            if (!$this->isValidDate($endDate) || $endDate < $date) {
+                $this->json(['error' => 'No afastamento, a data final deve ser igual ou posterior à inicial.'], 422);
+            }
+            $record = ['type' => 'afastamento', 'date' => $date, 'end_date' => $endDate,
+                       'start_time' => null, 'end_time' => null];
+        }
+        $record['note'] = $note;
+
+        // Atestado (opcional): PDF ou imagem, até 5 MB, guardado fora do alcance do navegador
+        $record['certificate_file'] = null;
+        $record['certificate_name'] = null;
+        $file = $_FILES['atestado'] ?? null;
+        if ($file && ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            if ($file['error'] !== UPLOAD_ERR_OK) {
+                $this->json(['error' => 'Falha no envio do atestado. Tente novamente.'], 422);
+            }
+            if ((int)$file['size'] > ATESTADO_MAX_BYTES) {
+                $this->json(['error' => 'O atestado deve ter no máximo 5 MB.'], 422);
+            }
+            $ext = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, ATESTADO_EXTENSIONS, true)) {
+                $this->json(['error' => 'Formato do atestado inválido — envie PDF, JPG ou PNG.'], 422);
+            }
+            $stored = 'atestado-' . bin2hex(random_bytes(16)) . '.' . $ext;
+            if (!move_uploaded_file($file['tmp_name'], Saude::atestadoDir() . '/' . $stored)) {
+                $this->json(['error' => 'Não foi possível guardar o atestado. Verifique as permissões de data/.'], 500);
+            }
+            $record['certificate_file'] = $stored;
+            $record['certificate_name'] = mb_substr((string)$file['name'], 0, 200);
+        }
+
+        $id = Saude::create((int)Session::userId(), $record);
+        $this->json(['ok' => true, 'id' => $id]);
+    }
+
+    public function healthDelete(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $id = (int)($this->body()['id'] ?? 0);
+        $leave = $id > 0 ? Saude::find($id) : null;
+        if (!$leave || (int)$leave['user_id'] !== (int)Session::userId()) {
+            $this->json(['error' => 'Registro de saúde não encontrado.'], 404);
+        }
+        Saude::delete($leave);
+        $this->json(['ok' => true]);
+    }
+
+    /** Baixa o atestado (dono do registro, administração ou gestão). */
+    public function atestado(): void
+    {
+        $this->requireLogin();
+        $id = (int)($_GET['id'] ?? 0);
+        $leave = $id > 0 ? Saude::find($id) : null;
+        $allowed = $leave && (
+            (int)$leave['user_id'] === (int)Session::userId()
+            || in_array(Session::role(), ['admin', 'gestor'], true)
+        );
+        if (!$allowed || empty($leave['certificate_file'])) {
+            $this->json(['error' => 'Atestado não encontrado.'], 404);
+        }
+        $path = Saude::atestadoDir() . '/' . basename((string)$leave['certificate_file']);
+        if (!is_file($path)) {
+            $this->json(['error' => 'Arquivo do atestado não está mais no servidor.'], 404);
+        }
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png'][$ext] ?? 'application/octet-stream';
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . (string)filesize($path));
+        header('Content-Disposition: attachment; filename="' . rawurlencode((string)($leave['certificate_name'] ?: 'atestado.' . $ext)) . '"');
+        header('Cache-Control: no-store');
+        readfile($path);
+        exit;
+    }
+
     /* ---------------- Jornada de trabalho ---------------- */
 
     public function schedule(): void
@@ -405,6 +520,11 @@ final class ApiController extends Controller
         $limitDt = "$date $limit";
         $now = date('Y-m-d H:i');
         $breaks = Pausa::forUser($uid, $date, $date);
+        foreach (Saude::forUser($uid, $date, $date) as $l) {
+            if ($l['type'] === 'saida') {
+                $breaks[] = ['start_time' => $l['start_time'], 'end_time' => $l['end_time'] ?: '23:59'];
+            }
+        }
         $total = 0.0;
         foreach (Activity::allWithPhases($uid, $date, $date, null) as $a) {
             foreach ($a['phases'] as $p) {
@@ -559,6 +679,28 @@ final class ApiController extends Controller
             if ($datetime >= $s && $datetime < $e) {
                 $label = BREAK_TYPES[$b['type']] ?? 'Descanso';
                 $this->json(['error' => "$prefix ($label {$b['start_time']}–{$b['end_time']}). Nenhum registro é permitido neste intervalo."], 422);
+            }
+        }
+        $this->rejectIfInHealthLeave($datetime, $prefix);
+    }
+
+    /**
+     * Recusa registros durante um afastamento médico (dia inteiro) ou dentro
+     * de uma saída médica (sem retorno informado, vale até o fim do dia).
+     */
+    private function rejectIfInHealthLeave(string $datetime, string $prefix): void
+    {
+        $prefix = str_replace('em horário de descanso', 'em saída médica', str_replace('cai no descanso', 'cai na saída médica', $prefix));
+        $date = substr($datetime, 0, 10);
+        foreach (Saude::forUser((int)Session::userId(), $date, $date) as $l) {
+            if ($l['type'] === 'afastamento') {
+                $this->json(['error' => "$prefix — há afastamento médico registrado neste dia. Nenhum registro de trabalho é permitido."], 422);
+            }
+            $s = "$date {$l['start_time']}";
+            $e = $l['end_time'] ? "$date {$l['end_time']}" : "$date 23:59";
+            if ($datetime >= $s && $datetime < $e) {
+                $ate = $l['end_time'] ? "–{$l['end_time']}" : ' (sem retorno)';
+                $this->json(['error' => "$prefix (Saída médica {$l['start_time']}$ate). Nenhum registro é permitido neste período."], 422);
             }
         }
     }

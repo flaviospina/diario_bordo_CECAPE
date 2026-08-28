@@ -74,8 +74,8 @@ $admin = $role === 'admin';
         </div>
 
         <div class="panel-card">
-          <div class="panel-title">Registrar descanso ou saída</div>
-          <p class="hint">Aponte o almoço, a janta ou uma saída médica (horário de saída e de retorno). O intervalo aparece no diário, bloqueia registros no período e é descontado das horas do relatório.</p>
+          <div class="panel-title">Registrar descanso</div>
+          <p class="hint">Aponte o almoço e/ou a janta do dia de trabalho. O descanso aparece no diário, bloqueia registros no período e é descontado das horas.</p>
           <form id="break-form">
             <div class="form-grid">
               <div class="form-group col-4">
@@ -87,20 +87,62 @@ $admin = $role === 'admin';
                 <select id="b-type" class="form-control form-select">
                   <option value="almoco">Almoço</option>
                   <option value="janta">Janta</option>
-                  <option value="saida_medica">Saída médica</option>
                 </select>
               </div>
               <div class="form-group col-2">
-                <label class="form-label" for="b-start">Saída/início <span class="req">*</span></label>
+                <label class="form-label" for="b-start">Início <span class="req">*</span></label>
                 <input type="time" id="b-start" class="form-control" required>
               </div>
               <div class="form-group col-2">
-                <label class="form-label" for="b-end">Retorno/término <span class="req">*</span></label>
+                <label class="form-label" for="b-end">Término <span class="req">*</span></label>
                 <input type="time" id="b-end" class="form-control" required>
               </div>
               <div class="form-group col-2 form-group-btn">
                 <button class="btn-primary" type="submit">Adicionar</button>
               </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel-card health-card">
+          <div class="panel-title">🏥 Saúde — saída médica ou afastamento</div>
+          <p class="hint">Registros de saúde ficam separados dos descansos. Na <b>saída médica</b>, o retorno é opcional — sem retorno, contam as horas restantes da sua jornada. No <b>afastamento</b> (1 dia ou mais), os dias inteiros ficam bloqueados. Anexe o atestado para ficar registrado no sistema.</p>
+          <form id="health-form">
+            <div class="form-grid">
+              <div class="form-group col-3">
+                <label class="form-label" for="h-type">Tipo <span class="req">*</span></label>
+                <select id="h-type" class="form-control form-select">
+                  <option value="saida">Saída médica</option>
+                  <option value="afastamento">Afastamento médico</option>
+                </select>
+              </div>
+              <div class="form-group col-3">
+                <label class="form-label" for="h-date" id="h-date-label">Data <span class="req">*</span></label>
+                <input type="date" id="h-date" class="form-control" required>
+              </div>
+              <div class="form-group col-3 h-saida">
+                <label class="form-label" for="h-start">Horário de saída <span class="req">*</span></label>
+                <input type="time" id="h-start" class="form-control">
+              </div>
+              <div class="form-group col-3 h-saida">
+                <label class="form-label" for="h-end">Retorno (opcional)</label>
+                <input type="time" id="h-end" class="form-control">
+              </div>
+              <div class="form-group col-3 h-afast" style="display:none">
+                <label class="form-label" for="h-end-date">Até (data final)</label>
+                <input type="date" id="h-end-date" class="form-control">
+              </div>
+              <div class="form-group col-6">
+                <label class="form-label" for="h-note">Observação</label>
+                <input type="text" id="h-note" class="form-control" maxlength="300" placeholder="Ex.: consulta cardiologista">
+              </div>
+              <div class="form-group col-6">
+                <label class="form-label" for="h-file">Atestado médico (PDF/JPG/PNG, até 5 MB)</label>
+                <input type="file" id="h-file" class="form-control form-file" accept=".pdf,.jpg,.jpeg,.png">
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn-action" type="submit">Registrar saúde</button>
             </div>
           </form>
         </div>
