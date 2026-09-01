@@ -52,6 +52,24 @@ final class Phase
         Database::pdo()->prepare('DELETE FROM phase_pauses WHERE phase_id = :p')->execute([':p' => $phaseId]);
     }
 
+    /**
+     * Encerra uma pausa em aberto no término real da etapa (ou a remove, se
+     * começou depois dele). Evita que uma pausa esquecida deixe a madrugada
+     * contar como tempo de trabalho.
+     */
+    public static function healOpenPause(int $phaseId, string $realEnd): void
+    {
+        $open = self::openPause($phaseId);
+        if (!$open) {
+            return;
+        }
+        if ($open['start_dt'] >= $realEnd) {
+            Database::pdo()->prepare('DELETE FROM phase_pauses WHERE id = :id')->execute([':id' => (int)$open['id']]);
+        } else {
+            self::closePause((int)$open['id'], $realEnd);
+        }
+    }
+
     /** Atualiza os horários reais (null limpa o campo). */
     public static function setTimes(int $id, array $fields): void
     {

@@ -255,6 +255,25 @@ function pauseMinutes(pauses) {
     pz.end_dt ? s + Math.max(0, minutesBetween(pz.start_dt, pz.end_dt) || 0) : s, 0);
 }
 
+/**
+ * Minutos de pausa que caem DENTRO do intervalo [startDt, endDt].
+ * Pausa em aberto é limitada ao fim do intervalo — assim uma pausa que
+ * atravessa a noite nunca deixa a madrugada contar como trabalho.
+ */
+function pauseOverlapMin(startDt, endDt, pauses) {
+  if (!startDt || !endDt || !pauses?.length) return 0;
+  const s0 = new Date(startDt.replace(' ', 'T'));
+  const e0 = new Date(endDt.replace(' ', 'T'));
+  let total = 0;
+  for (const pz of pauses) {
+    const ps = new Date(pz.start_dt.replace(' ', 'T'));
+    const pe = new Date((pz.end_dt || endDt).replace(' ', 'T'));
+    const o = Math.min(e0, pe) - Math.max(s0, ps);
+    if (o > 0) total += Math.round(o / 60000);
+  }
+  return total;
+}
+
 /** Etapa com pausa em aberto (pausada agora). */
 function isPaused(p) {
   return (p.pauses || []).some(pz => !pz.end_dt);
@@ -264,7 +283,22 @@ function isPaused(p) {
 function realNetMinutes(startDt, endDt, breaks, pauses) {
   const m = minutesBetween(startDt, endDt);
   if (m == null) return null;
-  return Math.max(0, m - breakOverlapMin(startDt, endDt, breaks) - pauseMinutes(pauses));
+  return Math.max(0, m - breakOverlapMin(startDt, endDt, breaks) - pauseOverlapMin(startDt, endDt, pauses));
+}
+
+/** "HH:MM" com a data entre parênteses quando cai em outro dia. */
+function fmtTimeRel(dt, baseDay) {
+  if (!dt) return '—';
+  const t = dt.slice(11, 16);
+  const d = dt.slice(0, 10);
+  return d && baseDay && d !== baseDay ? `${t} (${d.split('-').reverse().slice(0, 2).join('/')})` : t;
+}
+
+/** Lista legível das pausas de uma etapa: "15:00→09:00 (25/08)". */
+function pauseIntervals(p, baseDay) {
+  return (p.pauses || []).map(pz =>
+    `${fmtTimeRel(pz.start_dt, baseDay)}→${pz.end_dt ? fmtTimeRel(pz.end_dt, baseDay) : 'em pausa'}`
+  ).join(' · ');
 }
 
 function realDuration(a, breaks) {
@@ -302,7 +336,9 @@ function phaseRowHtml(p, editable) {
   const paused = !done && isPaused(p);
   const cls = done ? 'done' : (paused ? 'paused' : (started ? 'started' : ''));
   const realDur = realNetMinutes(p.real_start, p.real_end, blockWindows(STATE.breaks, STATE.health), p.pauses);
-  const pausedMin = pauseMinutes(p.pauses);
+  const pausedMin = p.real_end
+    ? pauseOverlapMin(p.real_start, p.real_end, p.pauses)
+    : pauseMinutes(p.pauses);
   let actions = '';
   if (editable) {
     if (!started && !done) {
@@ -318,8 +354,9 @@ function phaseRowHtml(p, editable) {
     }
     actions += `<button class="btn-sm btn-muted" data-phase="${p.id}" data-op="edit" title="Editar horários manualmente">Editar</button>`;
   }
+  const intervals = pauseIntervals(p, (p.real_start || '').slice(0, 10));
   const pauseInfo = (pausedMin || paused)
-    ? `<span class="pause-info">⏸ ${paused ? 'em pausa' : ''}${paused && pausedMin ? ' · ' : ''}${pausedMin ? 'pausas: ' + fmtDuration(pausedMin) : ''}</span>`
+    ? `<span class="pause-info" title="Pausas: ${esc(intervals)}">⏸ ${paused ? 'em pausa' : ''}${paused && pausedMin ? ' · ' : ''}${pausedMin ? 'pausas ' + fmtDuration(pausedMin) : ''}${intervals ? ` <small>(${esc(intervals)})</small>` : ''}</span>`
     : '';
   return `
     <div class="phase ${cls}">
@@ -514,7 +551,8 @@ function exportRows() {
         'Término (Previsão)': fmtDateTimeShort(p.prev_end),
         'Início (Real)': fmtDateTimeShort(p.real_start),
         'Término (Real)': fmtDateTimeShort(p.real_end),
-        'Pausas': pauseMinutes(p.pauses) ? fmtDuration(pauseMinutes(p.pauses)) : '',
+        'Pausas': pauseMinutes(p.pauses) ? fmtDuration(p.real_end ? pauseOverlapMin(p.real_start, p.real_end, p.pauses) : pauseMinutes(p.pauses)) : '',
+        'Pausas (horários)': pauseIntervals(p, a.date),
         'Duração real': fmtDuration(realNetMinutes(p.real_start, p.real_end, wins, p.pauses)),
         'Descrição': a.description || ''
       });
@@ -1105,16 +1143,17 @@ function simplifiedRows(data) {
     const daySaidas = health.filter(l => l.type === 'saida' && l.date === day);
     const wins = blockWindows(dayBreaks, daySaidas);
     const { inicio, fim, allReal } = dayBounds(list);
-    // Desconta intervalos dentro do expediente e as pausas das etapas do dia
-    const dayPauses = list.reduce((s, a) => s + a.phases.reduce((s2, p) => s2 + pauseMinutes(p.pauses), 0), 0);
+    // Desconta intervalos e pausas pela SOBREPOSIÇÃO com o expediente do dia
+    // (pausa que atravessa a noite é limitada ao término apontado)
+    const allPauses = list.flatMap(a => a.phases.flatMap(p => p.pauses || []));
     const base = realNetMinutes(inicio, fim, wins);
-    const liquido = base != null ? Math.max(0, base - dayPauses) : null;
+    const liquido = base != null ? Math.max(0, base - pauseOverlapMin(inicio, fim, allPauses)) : null;
     const partes = dayBreaks.map(b => `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`)
       .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'}${l.certificate_file ? ' (atestado)' : ''}`));
     return {
       day,
-      inicio: inicio ? fmtTime(inicio) : '—',
-      fim: fim ? fmtTime(fim) : '—',
+      inicio: inicio ? fmtTimeRel(inicio, day) : '—',
+      fim: fim ? fmtTimeRel(fim, day) : '—',
       descanso: partes.join('; ') || '—',
       liquido,
       marcador: allReal ? '' : ' *'
@@ -1209,12 +1248,15 @@ function buildDetailedHtml(data) {
           ${a.description ? `<p class="p-desc">${esc(a.description)}</p>` : ''}
           <table class="paper-table p-phases">
             <thead><tr><th>Etapa</th><th>Início (Prev.)</th><th>Término (Prev.)</th><th>Início (Real)</th><th>Término (Real)</th><th>Duração real</th></tr></thead>
-            <tbody>${a.phases.map(p => `<tr>
-              <td>${esc(p.name)}${pauseMinutes(p.pauses) ? ` <small>(pausas: ${fmtDuration(pauseMinutes(p.pauses))})</small>` : ''}</td>
+            <tbody>${a.phases.map(p => {
+              const pMin = p.real_end ? pauseOverlapMin(p.real_start, p.real_end, p.pauses) : pauseMinutes(p.pauses);
+              const pInt = pauseIntervals(p, day);
+              return `<tr>
+              <td>${esc(p.name)}${pMin ? `<br><small>⏸ Pausas (${fmtDuration(pMin)}): ${esc(pInt)}</small>` : ''}</td>
               <td>${fmtTime(p.prev_start)}</td><td>${fmtTime(p.prev_end)}</td>
-              <td>${fmtTime(p.real_start)}</td><td>${fmtTime(p.real_end)}</td>
+              <td>${fmtTimeRel(p.real_start, day)}</td><td>${fmtTimeRel(p.real_end, day)}</td>
               <td>${fmtDuration(realNetMinutes(p.real_start, p.real_end, wins, p.pauses))}</td>
-            </tr>`).join('')}</tbody>
+            </tr>`; }).join('')}</tbody>
           </table>
         </div>`).join('') || '<p class="p-desc">Sem atividades neste dia (apenas descanso registrado).</p>'}
     </div>`;
@@ -1319,13 +1361,18 @@ function exportReportPDF() {
     });
   } else {
     const body = [];
-    data.activities.forEach(a => a.phases.forEach(p => body.push([
-      a.date.split('-').reverse().join('/'), a.title, p.name,
-      fmtTime(p.prev_start) + '–' + fmtTime(p.prev_end),
-      fmtTime(p.real_start) + '–' + fmtTime(p.real_end),
-      fmtDuration(realNetMinutes(p.real_start, p.real_end, blockWindows(data.breaks, data.health), p.pauses)),
-      STATUS_LABEL[a.status]
-    ])));
+    data.activities.forEach(a => a.phases.forEach(p => {
+      const pInt = pauseIntervals(p, a.date);
+      body.push([
+        a.date.split('-').reverse().join('/'),
+        a.title,
+        p.name + (pInt ? ` (pausas: ${pInt})` : ''),
+        fmtTime(p.prev_start) + '–' + fmtTime(p.prev_end),
+        fmtTimeRel(p.real_start, a.date) + '–' + fmtTimeRel(p.real_end, a.date),
+        fmtDuration(realNetMinutes(p.real_start, p.real_end, blockWindows(data.breaks, data.health), p.pauses)),
+        STATUS_LABEL[a.status]
+      ]);
+    }));
     doc.autoTable({
       startY: 31,
       head: [['Data', 'Atividade', 'Etapa', 'Previsão', 'Real', 'Duração real', 'Status']],

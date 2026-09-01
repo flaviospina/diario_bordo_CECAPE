@@ -45,6 +45,10 @@ final class Activity
             $phStmt->execute([':id' => $a['id']]);
             $a['phases'] = $phStmt->fetchAll();
             foreach ($a['phases'] as &$p) {
+                // Auto-reparo: etapa concluída não pode ter pausa em aberto
+                if (!empty($p['real_end'])) {
+                    Phase::healOpenPause((int)$p['id'], (string)$p['real_end']);
+                }
                 $p['pauses'] = Phase::pauses((int)$p['id']);
             }
             unset($p);

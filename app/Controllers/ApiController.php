@@ -269,6 +269,11 @@ final class ApiController extends Controller
                 }
                 $this->assertTimeOrder($phase, $set);
                 Phase::setTimes($id, $set);
+                // Ao definir o término manualmente, uma pausa em aberto é
+                // encerrada nesse horário (senão a noite contaria como trabalho)
+                if (!empty($set['real_end'])) {
+                    Phase::healOpenPause($id, (string)$set['real_end']);
+                }
                 break;
             default:
                 $this->json(['error' => 'Operação inválida.'], 422);
@@ -535,6 +540,8 @@ final class ApiController extends Controller
                 if (!$end) {
                     continue;
                 }
+                // O banco de horas do dia considera só o trabalho até o fim do dia
+                $end = min($end, "$date 23:59");
                 $start = max($p['real_start'], $limitDt);
                 if ($start >= $end) {
                     continue;
@@ -544,9 +551,8 @@ final class ApiController extends Controller
                     $mins -= $this->overlapMin($start, $end, "$date {$b['start_time']}", "$date {$b['end_time']}");
                 }
                 foreach ($p['pauses'] ?? [] as $pz) {
-                    if (!empty($pz['end_dt'])) {
-                        $mins -= $this->overlapMin($start, $end, $pz['start_dt'], $pz['end_dt']);
-                    }
+                    // Pausa em aberto conta até o fim do intervalo considerado
+                    $mins -= $this->overlapMin($start, $end, $pz['start_dt'], $pz['end_dt'] ?: $end);
                 }
                 $total += max(0, $mins);
             }
