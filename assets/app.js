@@ -1120,6 +1120,10 @@ function dayBounds(list) {
 
 function simplifiedRows(data) {
   const health = data.health || [];
+  // As mesmas janelas usadas no relatório detalhado (todo o período):
+  // as horas do simplificado são a SOMA das durações líquidas das etapas,
+  // nunca o vão entre o primeiro início e o último término do dia.
+  const winsAll = blockWindows(data.breaks, health);
   const afastadoDias = health.filter(l => l.type === 'afastamento')
     .flatMap(l => afastDays(l, $('#r-from').value || null, $('#r-to').value || null));
   const days = [...new Set([
@@ -1141,13 +1145,23 @@ function simplifiedRows(data) {
     const list = data.activities.filter(a => a.date === day);
     const dayBreaks = data.breaks.filter(b => b.date === day);
     const daySaidas = health.filter(l => l.type === 'saida' && l.date === day);
-    const wins = blockWindows(dayBreaks, daySaidas);
     const { inicio, fim, allReal } = dayBounds(list);
-    // Desconta intervalos e pausas pela SOBREPOSIÇÃO com o expediente do dia
-    // (pausa que atravessa a noite é limitada ao término apontado)
-    const allPauses = list.flatMap(a => a.phases.flatMap(p => p.pauses || []));
-    const base = realNetMinutes(inicio, fim, wins);
-    const liquido = base != null ? Math.max(0, base - pauseOverlapMin(inicio, fim, allPauses)) : null;
+
+    // Horas trabalhadas = soma das etapas (idêntico ao relatório detalhado)
+    let real = 0, hasReal = false;
+    list.forEach(a => {
+      const m = realDuration(a, winsAll);
+      if (m != null) { real += m; hasReal = true; }
+    });
+    let liquido = null;
+    if (hasReal) {
+      liquido = real;
+    } else if (list.length) {
+      // Dia só com previsão: estima pela duração prevista das etapas
+      liquido = list.reduce((s, a) => s + a.phases.reduce((s2, p) =>
+        s2 + (realNetMinutes(p.prev_start, p.prev_end, winsAll, []) || 0), 0), 0);
+    }
+
     const partes = dayBreaks.map(b => `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`)
       .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'}${l.certificate_file ? ' (atestado)' : ''}`));
     return {
