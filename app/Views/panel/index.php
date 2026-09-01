@@ -24,7 +24,10 @@ $admin = $role === 'admin';
         <?php if ($admin): ?><button class="tab-btn" data-tab="contas">👥 Contas</button><?php endif; ?>
       </div>
 
-      <?php if ($capable): ?><div id="jornada-flag" class="jornada-flag no-print" hidden></div><?php endif; ?>
+      <?php if ($capable): ?>
+      <div id="ponto-bar" class="ponto-bar no-print" hidden></div>
+      <div id="jornada-flag" class="jornada-flag no-print" hidden></div>
+      <?php endif; ?>
 
       <?php if ($capable): ?>
       <!-- ══════════ REGISTRAR ══════════ -->
@@ -224,6 +227,34 @@ $admin = $role === 'admin';
         </div>
 
         <div class="panel-card">
+          <div class="panel-title">⏱ Registro de ponto (folha do RH)</div>
+          <p class="hint">A entrada e a saída de cada dia são registradas pelos botões <b>Iniciar jornada</b> e <b>Encerrar jornada</b> no topo do painel. Esqueceu de encerrar? O sistema fecha o ponto automaticamente no fim da sua jornada prevista. Use o formulário abaixo para registrar ou corrigir o ponto de um dia.</p>
+          <form id="ponto-form" class="form-grid">
+            <div class="form-group col-4">
+              <label class="form-label" for="pt-date">Data <span class="req">*</span></label>
+              <input type="date" id="pt-date" class="form-control">
+            </div>
+            <div class="form-group col-3">
+              <label class="form-label" for="pt-in">Entrada <span class="req">*</span></label>
+              <input type="time" id="pt-in" class="form-control">
+            </div>
+            <div class="form-group col-3">
+              <label class="form-label" for="pt-out">Saída</label>
+              <input type="time" id="pt-out" class="form-control">
+            </div>
+            <div class="form-group col-2 form-group-btn">
+              <button class="btn-primary" type="submit">Salvar ponto</button>
+            </div>
+          </form>
+          <div class="table-wrap">
+            <table class="data-table" id="ponto-table">
+              <thead><tr><th>Data</th><th>Entrada</th><th>Saída</th><th>Ações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card">
           <div class="panel-header-row">
             <div class="panel-title">Banco de horas</div>
             <span class="badge badge-cyan" id="hb-total">—</span>
@@ -243,7 +274,7 @@ $admin = $role === 'admin';
       <section id="tab-relatorios" class="tab-panel" hidden>
         <div class="panel-card no-print">
           <div class="panel-title">Gerar relatório</div>
-          <p class="hint">O relatório simplificado mostra apenas o início e o término do trabalho de cada dia, com os descansos; o detalhado inclui todas as atividades e etapas. Ambos saem com os campos de assinatura da direção e do professor.</p>
+          <p class="hint">O relatório <b>simplificado</b> mostra o início e o término do trabalho apontado em cada dia; o <b>detalhado</b> inclui todas as atividades e etapas; a <b>folha de ponto</b> traz a entrada e a saída registradas pelos botões de jornada — é o modelo para o fechamento do RH. Escolha um mês pronto ou um período livre. Todos saem com os campos de assinatura da direção e do professor.</p>
           <div class="form-grid">
             <?php if ($role !== 'professor'): ?>
             <div class="form-group col-4">
@@ -251,12 +282,17 @@ $admin = $role === 'admin';
               <select id="r-prof" class="form-control form-select"></select>
             </div>
             <?php endif; ?>
-            <div class="form-group col-4">
+            <div class="form-group col-5">
               <label class="form-label">Tipo de relatório</label>
               <div class="radio-row">
                 <label class="radio-opt"><input type="radio" name="r-type" value="simplificado" checked> Simplificado</label>
                 <label class="radio-opt"><input type="radio" name="r-type" value="detalhado"> Detalhado</label>
+                <label class="radio-opt"><input type="radio" name="r-type" value="ponto"> Folha de ponto</label>
               </div>
+            </div>
+            <div class="form-group col-3">
+              <label class="form-label" for="r-month">Mês</label>
+              <select id="r-month" class="form-control form-select"></select>
             </div>
             <div class="form-group col-2">
               <label class="form-label" for="r-from">De</label>

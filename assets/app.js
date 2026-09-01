@@ -14,6 +14,7 @@ let STATE = {
   director: '', directorRole: '',
   professors: [], profId: 0, professor: null,
   activities: [], breaks: [], formBreaks: [], jornada: [], health: [],
+  ponto: [], myPonto: [],
   schedule: [], hourBank: [], hourBankTotal: 0,
   phasesTemplate: [], reportData: null, reportType: 'simplificado'
 };
@@ -175,6 +176,7 @@ async function load() {
   STATE.breaks = data.breaks;
   STATE.jornada = data.jornada || [];
   STATE.health = data.health || [];
+  STATE.ponto = data.ponto || [];
   renderStats();
   renderList();
 }
@@ -417,6 +419,12 @@ function healthChip(l, day, editable) {
   return `<span class="health-chip">🏥 ${HEALTH_LABEL[l.type] || l.type} ${periodo}${l.note ? ` · ${esc(l.note)}` : ''}${atestado}${del}</span>`;
 }
 
+function pontoChip(day) {
+  const r = (STATE.ponto || []).find(x => x.date === day);
+  if (!r) return '';
+  return `<span class="ponto-chip">⏱ Ponto ${esc(r.clock_in)}–${r.clock_out ? esc(r.clock_out) : 'em aberto'}</span>`;
+}
+
 function jornadaChip(day) {
   const wd = new Date(day + 'T12:00:00').getDay();
   const s = STATE.jornada.find(x => Number(x.weekday) === wd && Number(x.enabled) === 1);
@@ -448,6 +456,7 @@ function renderList() {
       <div class="day-head">
         <h2>${fmtDay(day)}</h2>
         <span>${list.length} atividade${list.length !== 1 ? 's' : ''}${dayMin ? ' · ' + fmtDuration(dayMin) + ' registradas' : ''}</span>
+        ${pontoChip(day)}
         ${jornadaChip(day)}
         ${dayBreaks.map(b => breakChip(b, editable)).join('')}
         ${dayHealth.map(l => healthChip(l, day, editable)).join('')}
@@ -756,6 +765,116 @@ async function submitBreak(ev) {
     $('#b-end').value = '';
     await load();
     await loadFormBreaks();
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------------- Ponto (início/término da jornada) ---------------- */
+
+function todayPontoRec() {
+  return STATE.myPonto.find(r => r.date === isoDate(new Date())) || null;
+}
+
+/** Barra fixa do dia: iniciar/encerrar jornada (fechamento da folha do RH). */
+function renderPontoBar() {
+  const el = $('#ponto-bar');
+  if (!el) return;
+  const rec = todayPontoRec();
+  if (!rec) {
+    el.className = 'ponto-bar off no-print';
+    el.innerHTML = `⏱ <b>Jornada de hoje não iniciada.</b> Sem o ponto, o registro de atividades e etapas fica bloqueado.
+      <button class="btn-sm btn-ok" id="btn-ponto-in">▶ Iniciar jornada</button>`;
+  } else if (!rec.clock_out) {
+    el.className = 'ponto-bar on no-print';
+    el.innerHTML = `⏱ Jornada iniciada às <b>${esc(rec.clock_in)}</b>. Ao terminar o expediente, encerre para fechar a folha de ponto do dia.
+      <button class="btn-sm btn-danger" id="btn-ponto-out">⏹ Encerrar jornada</button>`;
+  } else {
+    el.className = 'ponto-bar done no-print';
+    el.innerHTML = `⏱ Jornada de hoje registrada: <b>${esc(rec.clock_in)} – ${esc(rec.clock_out)}</b>`
+      + (Number(rec.auto_closed) ? ' <small>(encerrada automaticamente no fim da jornada prevista)</small>' : '')
+      + '. Precisa corrigir? Use o registro de ponto na aba Jornada.';
+  }
+  el.hidden = false;
+  $('#btn-ponto-in')?.addEventListener('click', clockIn);
+  $('#btn-ponto-out')?.addEventListener('click', clockOut);
+}
+
+async function refreshPonto() {
+  try {
+    STATE.myPonto = (await api('ponto')).records || [];
+  } catch { STATE.myPonto = []; }
+  renderPontoBar();
+  renderPontoTable();
+}
+
+async function clockIn() {
+  try {
+    await api('ponto-in', { body: {} });
+    toast('Jornada iniciada — bom trabalho!');
+    await refreshPonto();
+    await load();
+  } catch (e) { toast(e.message); }
+}
+
+async function clockOut() {
+  if (!confirm('Encerrar a jornada de agora? Depois de encerrada, novos registros de trabalho do dia ficam bloqueados.')) return;
+  try {
+    await api('ponto-out', { body: {} });
+    toast('Jornada encerrada — ponto do dia fechado.');
+    await refreshPonto();
+    await load();
+  } catch (e) { toast(e.message); }
+}
+
+function renderPontoTable() {
+  const tbody = $('#ponto-table tbody');
+  if (!tbody) return;
+  if (!STATE.myPonto.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="hb-empty">Nenhum registro de ponto ainda — use "Iniciar jornada" no topo do painel.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = STATE.myPonto.slice(0, 30).map(r => `
+    <tr>
+      <td>${fmtDayShort(r.date)}</td>
+      <td><b>${esc(r.clock_in)}</b></td>
+      <td>${r.clock_out
+        ? `<b>${esc(r.clock_out)}</b>${Number(r.auto_closed) ? ' <span class="badge badge-orange" title="Encerrada automaticamente no fim da jornada prevista">auto</span>' : ''}`
+        : 'em aberto'}</td>
+      <td class="action-cell">
+        <button class="btn-sm btn-info" data-ponto-edit="${r.id}">Corrigir</button>
+        <button class="btn-sm btn-danger" data-ponto-del="${r.id}">Excluir</button>
+      </td>
+    </tr>`).join('');
+
+  $$('#ponto-table [data-ponto-edit]').forEach(btn => btn.addEventListener('click', () => {
+    const r = STATE.myPonto.find(x => x.id == btn.dataset.pontoEdit);
+    if (!r) return;
+    $('#pt-date').value = r.date;
+    $('#pt-in').value = r.clock_in;
+    $('#pt-out').value = r.clock_out || '';
+    toast('Ajuste os horários no formulário acima e clique em "Salvar ponto".');
+    $('#pt-in').focus();
+  }));
+  $$('#ponto-table [data-ponto-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Excluir este registro de ponto? Sem o ponto, os apontamentos do dia ficam bloqueados para novas edições.')) return;
+    try {
+      await api('ponto-delete', { body: { id: btn.dataset.pontoDel } });
+      toast('Registro de ponto excluído.');
+      await refreshPonto();
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+}
+
+async function submitPonto(ev) {
+  ev.preventDefault();
+  const date = $('#pt-date').value, entrada = $('#pt-in').value, saida = $('#pt-out').value;
+  if (!date || !entrada) return toast('Informe a data e o horário de entrada.');
+  try {
+    await api('ponto-set', { body: { date, in: entrada, out: saida } });
+    toast('Ponto salvo.');
+    $('#pt-out').value = '';
+    await refreshPonto();
+    await load();
   } catch (e) { toast(e.message); }
 }
 
@@ -1301,6 +1420,119 @@ function buildDetailedHtml(data) {
   </div>`;
 }
 
+/* ---------------- Relatório Folha de ponto ---------------- */
+
+/** Sobreposição, em minutos, entre dois intervalos "HH:MM". */
+function overlapHM(aS, aE, bS, bE) {
+  const s = aS > bS ? aS : bS;
+  const e = aE < bE ? aE : bE;
+  return e > s ? minutesHM(s, e) : 0;
+}
+
+/** Horas do ponto do dia = entrada→saída − descansos − saídas médicas. */
+function pontoDayMinutes(rec, dayBreaks, daySaidas) {
+  if (!rec || !rec.clock_out) return null;
+  let min = minutesHM(rec.clock_in, rec.clock_out);
+  dayBreaks.forEach(b => { min -= overlapHM(rec.clock_in, rec.clock_out, b.start_time, b.end_time); });
+  daySaidas.forEach(l => { min -= overlapHM(rec.clock_in, rec.clock_out, l.start_time, l.end_time || '23:59'); });
+  return Math.max(0, min);
+}
+
+function pontoReportRows(data) {
+  const health = data.health || [];
+  const ponto = data.ponto || [];
+  const afastadoDias = health.filter(l => l.type === 'afastamento')
+    .flatMap(l => afastDays(l, $('#r-from').value || null, $('#r-to').value || null));
+  const days = [...new Set([
+    ...ponto.map(r => r.date),
+    ...health.filter(l => l.type === 'saida').map(l => l.date),
+    ...afastadoDias
+  ])].sort();
+  return days.map(day => {
+    if (afastadoDias.includes(day)) {
+      const l = health.find(x => x.type === 'afastamento' && day >= x.date && day <= (x.end_date || x.date));
+      const periodo = l ? `${l.date.split('-').reverse().slice(0, 2).join('/')} a ${(l.end_date || l.date).split('-').reverse().slice(0, 2).join('/')}` : '';
+      return {
+        day, entrada: '—', saida: '—',
+        intervalos: `Afastamento médico (${periodo}) — ${l && l.certificate_file ? 'atestado entregue' : 'sem atestado'}`,
+        min: null, auto: false
+      };
+    }
+    const rec = ponto.find(r => r.date === day) || null;
+    const dayBreaks = (data.breaks || []).filter(b => b.date === day);
+    const daySaidas = health.filter(l => l.type === 'saida' && l.date === day);
+    const partes = dayBreaks.map(b => `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`)
+      .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'} ${l.certificate_file ? '(atestado entregue)' : '(sem atestado)'}`));
+    return {
+      day,
+      entrada: rec ? rec.clock_in : '—',
+      saida: rec ? (rec.clock_out || 'em aberto') : '—',
+      intervalos: partes.join('; ') || '—',
+      min: pontoDayMinutes(rec, dayBreaks, daySaidas),
+      auto: !!(rec && Number(rec.auto_closed))
+    };
+  });
+}
+
+function buildPontoHtml(data) {
+  const rows = pontoReportRows(data);
+  const prof = data.professor;
+  const totalMin = rows.reduce((s, r) => s + (r.min || 0), 0);
+  const temAuto = rows.some(r => r.auto);
+  return `
+  <div class="paper" id="paper">
+    <div class="paper-head">
+      <h1>Folha de Ponto — Home Office</h1>
+      <p class="paper-org">Diário de Bordo · CECAPE</p>
+      <div class="paper-meta">
+        <span><b>Professor(a):</b> ${esc(prof.name)}</span>
+        <span><b>RM:</b> ${esc(prof.rm || '—')}</span>
+        <span><b>Período:</b> ${reportPeriodLabel()}</span>
+      </div>
+    </div>
+    <table class="paper-table">
+      <thead><tr><th>Data</th><th>Entrada</th><th>Saída</th><th>Intervalos</th><th>Horas trabalhadas</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td>${fmtDayShort(r.day)}</td>
+          <td>${esc(r.entrada)}</td>
+          <td>${esc(r.saida)}${r.auto ? ' ¹' : ''}</td>
+          <td>${esc(r.intervalos)}</td>
+          <td>${r.min != null ? fmtDuration(r.min) : '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+      <tfoot><tr><td colspan="4"><b>Total (${rows.length} dia${rows.length !== 1 ? 's' : ''})</b></td><td><b>${fmtDuration(totalMin)}</b></td></tr></tfoot>
+    </table>
+    <p class="paper-note">As horas trabalhadas consideram o ponto registrado (entrada → saída), descontados os descansos e as saídas médicas do dia.${temAuto ? '<br>¹ saída registrada automaticamente pelo sistema no fim da jornada prevista (ponto não encerrado pelo professor).' : ''}</p>
+    <p class="paper-issued">Documento emitido em ${new Date().toLocaleString('pt-BR')} pelo Diário de Bordo CECAPE.</p>
+    ${signBlockHtml(prof)}
+  </div>`;
+}
+
+/** Seletor "Mês": preenche De/Até com o mês escolhido (todos os tipos). */
+function initMonthSelector() {
+  const sel = $('#r-month');
+  if (!sel) return;
+  const now = new Date();
+  const opts = ['<option value="">Período livre</option>'];
+  for (let i = 0; i < 13; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const v = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+    const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    opts.push(`<option value="${v}">${label.charAt(0).toUpperCase() + label.slice(1)}</option>`);
+  }
+  sel.innerHTML = opts.join('');
+  sel.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    const [y, m] = sel.value.split('-').map(Number);
+    $('#r-from').value = isoDate(new Date(y, m - 1, 1));
+    $('#r-to').value = isoDate(new Date(y, m, 0));
+  });
+  // Datas alteradas à mão voltam o seletor para "Período livre"
+  ['#r-from', '#r-to'].forEach(s => $(s).addEventListener('change', () => { sel.value = ''; }));
+}
+
 async function gerarRelatorio() {
   const profId = reportProfessorId();
   const from = $('#r-from').value, to = $('#r-to').value;
@@ -1311,7 +1543,7 @@ async function gerarRelatorio() {
   if (to) qs.set('to', to);
   try {
     const data = await api('list', { qs: qs.toString() });
-    if (!data.activities.length && !data.breaks.length) {
+    if (!data.activities.length && !data.breaks.length && !(data.ponto || []).length && !(data.health || []).length) {
       $('#report-area').innerHTML = '<div class="empty">Nenhum apontamento no período selecionado.</div>';
       $('#btn-rel-print').disabled = true;
       $('#btn-rel-pdf').disabled = true;
@@ -1319,7 +1551,8 @@ async function gerarRelatorio() {
     }
     STATE.reportData = data;
     STATE.reportType = tipo;
-    $('#report-area').innerHTML = tipo === 'simplificado' ? buildSimplifiedHtml(data) : buildDetailedHtml(data);
+    $('#report-area').innerHTML = tipo === 'ponto' ? buildPontoHtml(data)
+      : (tipo === 'simplificado' ? buildSimplifiedHtml(data) : buildDetailedHtml(data));
     $('#btn-rel-print').disabled = false;
     $('#btn-rel-pdf').disabled = false;
     toast('Relatório gerado — confira a prévia abaixo.');
@@ -1364,19 +1597,42 @@ function exportReportPDF() {
     return printReport();
   }
   const prof = data.professor;
-  const simplificado = STATE.reportType === 'simplificado';
-  const doc = new jspdf.jsPDF({ orientation: simplificado ? 'portrait' : 'landscape', unit: 'mm', format: 'a4' });
+  const tipo = STATE.reportType;
+  const simplificado = tipo === 'simplificado';
+  const doc = new jspdf.jsPDF({ orientation: tipo === 'detalhado' ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
   doc.setFontSize(13);
   doc.setTextColor(20);
-  doc.text(`Relatório ${simplificado ? 'Simplificado' : 'Detalhado'} de Atividades — Home Office`, 14, 15);
+  doc.text(tipo === 'ponto'
+    ? 'Folha de Ponto — Home Office'
+    : `Relatório ${simplificado ? 'Simplificado' : 'Detalhado'} de Atividades — Home Office`, 14, 15);
   doc.setFontSize(9);
   doc.setTextColor(110);
   doc.text(`Diário de Bordo · CECAPE`, 14, 21);
   doc.text(`Professor(a): ${prof.name}   ·   RM: ${prof.rm || '—'}   ·   Período: ${reportPeriodLabel()}   ·   Emitido em ${new Date().toLocaleString('pt-BR')}`, 14, 26);
 
-  if (simplificado) {
+  if (tipo === 'ponto') {
+    const rows = pontoReportRows(data);
+    const totalMin = rows.reduce((s, r) => s + (r.min || 0), 0);
+    doc.autoTable({
+      startY: 31,
+      head: [['Data', 'Entrada', 'Saída', 'Intervalos', 'Horas trabalhadas']],
+      body: rows.map(r => [fmtDayShort(r.day), r.entrada, r.saida + (r.auto ? ' ¹' : ''), r.intervalos, r.min != null ? fmtDuration(r.min) : '—']),
+      foot: [[`Total (${rows.length} dia${rows.length !== 1 ? 's' : ''})`, '', '', '', fmtDuration(totalMin)]],
+      styles: { fontSize: 9, cellPadding: 2.2 },
+      headStyles: { fillColor: [15, 32, 68], textColor: [255, 255, 255] },
+      footStyles: { fillColor: [230, 236, 245], textColor: [20, 20, 20], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [244, 248, 252] }
+    });
+    doc.setFontSize(7.5);
+    doc.setTextColor(110);
+    let noteY = doc.lastAutoTable.finalY + 5;
+    doc.text('Horas trabalhadas = ponto registrado (entrada → saída), descontados os descansos e as saídas médicas.', 14, noteY);
+    if (rows.some(r => r.auto)) {
+      doc.text('¹ saída registrada automaticamente pelo sistema no fim da jornada prevista.', 14, noteY + 4);
+    }
+  } else if (simplificado) {
     const rows = simplifiedRows(data);
     const totalMin = rows.reduce((s, r) => s + (r.liquido || 0), 0);
     doc.autoTable({
@@ -1417,7 +1673,7 @@ function exportReportPDF() {
   const pageHeight = doc.internal.pageSize.getHeight();
   if (y > pageHeight - 25) { doc.addPage(); y = 40; }
   pdfSignatures(doc, pageWidth, y);
-  doc.save(`relatorio_${STATE.reportType}_${(prof.name || 'professor').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${isoDate(new Date())}.pdf`);
+  doc.save(`${tipo === 'ponto' ? 'folha_de_ponto' : 'relatorio_' + tipo}_${(prof.name || 'professor').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${isoDate(new Date())}.pdf`);
   toast('PDF exportado.');
 }
 
@@ -1473,12 +1729,18 @@ async function initPanel() {
     updateJornadaFlag();
     $('#jornada-form').addEventListener('submit', saveSchedule);
     setInterval(updateJornadaFlag, 60000);
+
+    // Ponto do dia (Iniciar/Encerrar jornada) e correções
+    $('#pt-date').value = isoDate(now);
+    $('#ponto-form').addEventListener('submit', submitPonto);
+    await refreshPonto();
   }
 
   // Relatórios
   const today = new Date();
   $('#r-from').value = isoDate(new Date(today.getFullYear(), today.getMonth(), 1));
   $('#r-to').value = isoDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+  initMonthSelector();
   $('#btn-gerar').addEventListener('click', gerarRelatorio);
   $('#btn-rel-print').addEventListener('click', printReport);
   $('#btn-rel-pdf').addEventListener('click', exportReportPDF);

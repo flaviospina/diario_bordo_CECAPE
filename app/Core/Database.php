@@ -133,6 +133,15 @@ final class Database
             `note` VARCHAR(200) NOT NULL DEFAULT \'\',
             `created_at` VARCHAR(19) NOT NULL,
             UNIQUE KEY `uq_hour_bank` (`user_id`, `date`)' . $suffix);
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `time_clock` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `user_id` INT UNSIGNED NOT NULL,
+            `date` VARCHAR(10) NOT NULL,
+            `clock_in` VARCHAR(5) NOT NULL,
+            `clock_out` VARCHAR(5) NULL,
+            `auto_closed` TINYINT NOT NULL DEFAULT 0,
+            `created_at` VARCHAR(19) NOT NULL,
+            UNIQUE KEY `uq_time_clock` (`user_id`, `date`)' . $suffix);
         $pdo->exec('CREATE TABLE IF NOT EXISTS `medical_leaves` (
             `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
             `user_id` INT UNSIGNED NOT NULL,
@@ -205,6 +214,7 @@ final class Database
             'breaks' => ['id', 'user_id', 'date', 'type', 'start_time', 'end_time'],
             'work_schedules' => ['id', 'user_id', 'weekday', 'enabled', 'start_time', 'end_time'],
             'hour_bank' => ['id', 'user_id', 'date', 'minutes', 'note', 'created_at'],
+            'time_clock' => ['id', 'user_id', 'date', 'clock_in', 'clock_out', 'auto_closed', 'created_at'],
             'medical_leaves' => ['id', 'user_id', 'type', 'date', 'end_date', 'start_time', 'end_time',
                                  'note', 'certificate_file', 'certificate_name', 'created_at'],
         ];
@@ -370,6 +380,16 @@ final class Database
             date TEXT NOT NULL,
             minutes INTEGER NOT NULL,
             note TEXT NOT NULL DEFAULT "",
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, date)
+        )');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS time_clock (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            clock_in TEXT NOT NULL,
+            clock_out TEXT,
+            auto_closed INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             UNIQUE(user_id, date)
         )');

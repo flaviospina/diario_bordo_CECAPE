@@ -17,6 +17,7 @@ $T = 'assets/tutorial';
         <div class="panel-title">Índice</div>
         <div class="tut-index-links">
           <a href="#acesso">🔐 Acesso e senha</a>
+          <?php if ($capable): ?><a href="#ponto">⏱ Ponto do dia</a><?php endif; ?>
           <?php if ($capable): ?><a href="#registrar">✏️ Registrar atividades</a><?php endif; ?>
           <?php if ($capable): ?><a href="#intervalos">☕ Descansos e saídas</a><?php endif; ?>
           <a href="#diario">📒 Diário</a>
@@ -57,10 +58,34 @@ $T = 'assets/tutorial';
       </section>
 
       <?php if ($capable): ?>
+      <!-- ═══════════ PONTO ═══════════ -->
+      <section class="tut-section" id="ponto">
+        <img class="tut-hero" src="<?= $T ?>/hero-jornada.jpg" alt="Ponto do dia">
+        <p>O dia de trabalho começa e termina pelo <b>ponto</b>: os botões <b>▶ Iniciar jornada</b> e <b>⏹ Encerrar jornada</b>, na barra do topo do painel. É esse registro de entrada e saída que fecha a <b>folha de ponto do RH</b>.</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-ponto.jpg" alt="Barra de ponto do dia">
+          <figcaption>Sem o ponto do dia, a barra fica vermelha e o botão <b>Iniciar jornada</b> (destacado) libera o trabalho.</figcaption>
+        </figure>
+        <ul>
+          <li><b>Tudo fica bloqueado sem o ponto</b> — o sistema recusa propor atividades e usar os botões das etapas (Iniciar/Pausar/Concluir/Editar) enquanto a jornada do dia não for iniciada, e também depois de encerrada.</li>
+          <li><b>Iniciar jornada</b> grava a entrada com a hora atual; a barra fica verde enquanto a jornada está aberta.</li>
+          <li><b>Encerrar jornada</b> grava a saída e fecha o ponto do dia — depois disso, novos registros de trabalho do dia são recusados.</li>
+          <li><b>Esqueceu de encerrar?</b> O sistema fecha o ponto automaticamente no <b>fim da jornada prevista</b> que você cadastrou na aba Jornada (o registro fica marcado como <i>auto</i> e com ¹ na folha de ponto).</li>
+          <li><b>Dia de afastamento médico</b> não aceita ponto — o dia inteiro fica bloqueado.</li>
+        </ul>
+        <h3>Corrigir ou registrar um dia esquecido</h3>
+        <p>Na aba <b>🕐 Jornada</b>, o card <b>"⏱ Registro de ponto (folha do RH)"</b> lista os últimos dias e permite <b>corrigir</b> a entrada/saída ou <b>registrar o ponto de um dia anterior</b> (informe data, entrada e saída e clique em Salvar ponto).</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-ponto-corrigir.jpg" alt="Correção do ponto">
+          <figcaption>O card de registro de ponto: formulário de correção e a lista dos dias (a etiqueta <i>auto</i> indica encerramento automático).</figcaption>
+        </figure>
+        <div class="tut-tip">💡 No Diário, cada dia mostra a etiqueta <b>⏱ Ponto</b> com a entrada e a saída registradas — fácil de conferir com a jornada prevista ao lado.</div>
+      </section>
+
       <!-- ═══════════ REGISTRAR ═══════════ -->
       <section class="tut-section" id="registrar">
         <img class="tut-hero" src="<?= $T ?>/hero-registrar.jpg" alt="Registrar atividades">
-        <p>Na aba <b>✏️ Registrar</b> você propõe as atividades do dia. O grande diferencial: você informa só o essencial e o <b>sistema preenche a previsão de cada etapa automaticamente</b>.</p>
+        <p>Na aba <b>✏️ Registrar</b> você propõe as atividades do dia. O grande diferencial: você informa só o essencial e o <b>sistema preenche a previsão de cada etapa automaticamente</b>. Lembre-se: é preciso ter <b>iniciado a jornada</b> (ponto do dia) para registrar.</p>
         <ol class="tut-steps">
           <li>Preencha o <b>título</b> (obrigatório), a categoria e a descrição.</li>
           <li>Informe a <b>data</b>, o <b>horário de início</b> e a <b>duração estimada</b> em minutos.</li>
@@ -170,12 +195,17 @@ $T = 'assets/tutorial';
       <!-- ═══════════ RELATÓRIOS ═══════════ -->
       <section class="tut-section" id="relatorios">
         <img class="tut-hero" src="<?= $T ?>/hero-relatorios.jpg" alt="Relatórios">
-        <p>Na aba <b>🖨 Relatórios</b>, escolha <?= $role !== 'professor' ? 'o professor, ' : '' ?>o período e o tipo de relatório, e clique em <b>Gerar relatório</b>. A prévia aparece como um documento em fundo branco, pronto para impressão.</p>
+        <p>Na aba <b>🖨 Relatórios</b>, escolha <?= $role !== 'professor' ? 'o professor, ' : '' ?>o período e o tipo de relatório, e clique em <b>Gerar relatório</b>. A prévia aparece como um documento em fundo branco, pronto para impressão. O seletor <b>Mês</b> preenche De/Até com o mês inteiro de uma vez — ideal para o fechamento mensal — e vale para os três tipos.</p>
         <ul>
           <li><b>Simplificado</b> — uma linha por dia com <b>início e término do trabalho apontado</b>, os intervalos e as horas trabalhadas líquidas. Dias com <code>*</code> têm etapas ainda sem registro real.</li>
           <li><b>Detalhado</b> — todas as atividades e etapas do período, com previsão × real e as pausas.</li>
+          <li><b>Folha de ponto</b> — o modelo para o <b>fechamento do RH</b>: entrada e saída registradas pelos botões de jornada, os intervalos do dia e as horas do ponto (entrada → saída, descontados descansos e saídas médicas). Saídas automáticas aparecem com ¹.</li>
         </ul>
-        <p>Os dois saem com os <b>campos de assinatura</b> — <?= e(DIRECTOR_NAME) ?> (<?= e(DIRECTOR_ROLE) ?>) e o professor (nome + RM) — na tela, na impressão e no PDF.</p>
+        <p>Todos saem com os <b>campos de assinatura</b> — <?= e(DIRECTOR_NAME) ?> (<?= e(DIRECTOR_ROLE) ?>) e o professor (nome + RM) — na tela, na impressão e no PDF.</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-rel-ponto.jpg" alt="Folha de ponto">
+          <figcaption>Folha de ponto do mês: escolha o tipo, o mês no seletor e clique em Gerar relatório.</figcaption>
+        </figure>
         <figure class="tut-img">
           <img src="<?= $T ?>/tela-rel-simplificado.jpg" alt="Relatório simplificado">
           <figcaption>Relatório simplificado gerado; os botões Imprimir e PDF (destacados) são liberados após gerar.</figcaption>
@@ -211,7 +241,7 @@ $T = 'assets/tutorial';
           <div class="panel-title">💡 Dicas rápidas</div>
           <ul class="tut-dicas">
             <?php if ($capable): ?>
-            <li><b>Rotina sugerida do dia:</b> ao começar, registre o almoço previsto → proponha as atividades → use Iniciar/Concluir em cada etapa conforme trabalha → ao fim do dia, confira o aviso da jornada e registre eventuais horas extras.</li>
+            <li><b>Rotina sugerida do dia:</b> clique em <b>▶ Iniciar jornada</b> → registre o almoço previsto → proponha as atividades → use Iniciar/Concluir em cada etapa conforme trabalha → ao fim do expediente, clique em <b>⏹ Encerrar jornada</b> (e registre eventuais horas extras no banco de horas).</li>
             <li>Precisou atender outra demanda? <b>Pause</b> a etapa atual, registre e trabalhe na outra atividade, depois <b>Retome</b> — os tempos ficam corretos sozinhos.</li>
             <li>Esqueceu de apontar em tempo real? Use <b>Editar</b> na etapa e informe os horários manualmente (o sistema recusa horários dentro de intervalos).</li>
             <?php endif; ?>

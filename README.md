@@ -16,6 +16,12 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 
 ## Funcionalidades
 
+### Ponto (folha do RH)
+- Botões **▶ Iniciar jornada / ⏹ Encerrar jornada** na barra do topo registram a entrada e a saída do dia — é o registro usado no fechamento da folha do RH.
+- **Bloqueio total sem o ponto**: propor atividades e operar etapas (iniciar/pausar/retomar/concluir/editar) só com a jornada do dia iniciada; horários antes da entrada ou depois da saída registrada são recusados.
+- **Encerramento automático**: ponto esquecido em aberto é fechado no **fim da jornada semanal prevista** do professor (marcado como `auto`/¹); sem jornada definida, usa o último apontamento real do dia.
+- Correção na aba Jornada: card **"Registro de ponto"** lista os dias e permite corrigir entrada/saída ou registrar um dia esquecido; dias de afastamento médico não aceitam ponto.
+
 ### Apontamentos
 - Ao propor uma atividade (título, data, início e duração estimada), o sistema preenche automaticamente a **previsão de início e término de cada etapa**, distribuindo a duração pelos pesos do modelo do professor.
 - Botões **Iniciar/Pausar/Retomar/Concluir** registram os horários reais de cada etapa; edição manual disponível. Pausar congela a contagem para trabalhar em outra atividade — o tempo pausado não conta como trabalho e é descontado de todas as horas e relatórios.
@@ -38,7 +44,9 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 ### Relatórios (com assinaturas)
 - **Simplificado**: uma linha por dia com início e término do trabalho apontado, descansos e horas trabalhadas líquidas. Se o dia tem registros reais, os horários exibidos são somente os reais; dias sem registro real usam a previsão, marcados com `*`.
 - **Detalhado**: todas as atividades e etapas do período, com previsão × real.
-- Ambos saem com **campos de assinatura**: Maiberte Brogliato (Direção · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
+- **Folha de ponto** (fechamento do RH): entrada e saída registradas pelo ponto, intervalos do dia e horas do ponto (entrada → saída, descontados descansos e saídas médicas); saídas automáticas marcadas com ¹; dias de afastamento em linha própria com o status do atestado.
+- Seletor de **Mês** que preenche o período com o mês inteiro (vale para os três tipos), além das datas livres.
+- Todos saem com **campos de assinatura**: Maiberte Brogliato (Direção · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
 - Impressão em layout claro de documento; PDF gerado no navegador (jsPDF), com fallback para a impressão.
 
 ## Banco de dados: MySQL ou SQLite
@@ -66,11 +74,11 @@ app/
 ├── Controllers/
 │   ├── PanelController.php   Login (form nativo + redirect) e painel por perfil
 │   └── ApiController.php     API JSON (sessão, apontamentos, descansos, contas)
-├── Models/                   User, Activity, Phase, Pausa, Jornada, BancoHoras, Saude, LoginAttempt
+├── Models/                   User, Activity, Phase, Pausa, Jornada, BancoHoras, Saude, Ponto, LoginAttempt
 └── Views/                    Layout, login e painel (abas por perfil)
 ```
 
-Tabelas: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks` (intervalos), `work_schedules` (jornada semanal), `hour_bank` (banco de horas), `medical_leaves` (saúde, com atestado), `login_attempts`. No MySQL, `phases` e `phase_pauses` têm chave estrangeira com `ON DELETE CASCADE`. Migrações automáticas: banco SQLite antigo de usuário único ganha a coluna `user_id` e preserva a senha cadastrada; SQLite → MySQL importa tudo na primeira conexão.
+Tabelas: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks` (intervalos), `work_schedules` (jornada semanal), `hour_bank` (banco de horas), `medical_leaves` (saúde, com atestado), `time_clock` (ponto diário: entrada, saída e marcação de encerramento automático), `login_attempts`. No MySQL, `phases` e `phase_pauses` têm chave estrangeira com `ON DELETE CASCADE`. Migrações automáticas: banco SQLite antigo de usuário único ganha a coluna `user_id` e preserva a senha cadastrada; SQLite → MySQL importa tudo na primeira conexão.
 
 ## Segurança
 

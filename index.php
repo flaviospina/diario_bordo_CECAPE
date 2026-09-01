@@ -62,6 +62,13 @@ $router->add('POST', 'api/pause-delete', ApiController::class, 'pauseDelete');
 $router->add('POST', 'api/break-create', ApiController::class, 'breakCreate');
 $router->add('POST', 'api/break-delete', ApiController::class, 'breakDelete');
 
+// API — ponto (início/término da jornada, folha do RH)
+$router->add('GET', 'api/ponto', ApiController::class, 'ponto');
+$router->add('POST', 'api/ponto-in', ApiController::class, 'pontoIn');
+$router->add('POST', 'api/ponto-out', ApiController::class, 'pontoOut');
+$router->add('POST', 'api/ponto-set', ApiController::class, 'pontoSet');
+$router->add('POST', 'api/ponto-delete', ApiController::class, 'pontoDelete');
+
 // API — saúde (saídas médicas e afastamentos, com atestado)
 $router->add('POST', 'api/health-create', ApiController::class, 'healthCreate');
 $router->add('POST', 'api/health-delete', ApiController::class, 'healthDelete');

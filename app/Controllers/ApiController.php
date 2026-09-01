@@ -13,6 +13,7 @@ use App\Models\Jornada;
 use App\Models\LoginAttempt;
 use App\Models\Pausa;
 use App\Models\Phase;
+use App\Models\Ponto;
 use App\Models\Saude;
 use App\Models\User;
 
@@ -110,12 +111,15 @@ final class ApiController extends Controller
         $from = $this->dateParam('from');
         $to = $this->dateParam('to');
         $q = mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100) ?: null;
+        // Ponto esquecido em aberto é encerrado no fim da jornada do dia
+        Ponto::autoCloseOpen((int)$target['id']);
         $this->json([
             'professor' => User::publicView($target),
             'activities' => Activity::allWithPhases((int)$target['id'], $from, $to, $q),
             'breaks' => Pausa::forUser((int)$target['id'], $from, $to),
             'jornada' => Jornada::forUser((int)$target['id']),
             'health' => Saude::forUser((int)$target['id'], $from, $to),
+            'ponto' => Ponto::forUser((int)$target['id'], $from, $to),
         ]);
     }
 
@@ -145,6 +149,13 @@ final class ApiController extends Controller
         if ($title === '' || !$this->isValidDate($date) || !$this->isValidTime($startTime)
             || $duration < 1 || $duration > MAX_DURATION_MINUTES) {
             $this->json(['error' => 'Preencha título, data, horário de início e duração (até 24h).'], 422);
+        }
+
+        // Sem ponto do dia, nenhuma atividade pode ser registrada
+        if (!Ponto::forDay((int)Session::userId(), $date)) {
+            $this->json(['error' => $date === date('Y-m-d')
+                ? 'Inicie a jornada de trabalho (botão "Iniciar jornada", no topo) antes de registrar atividades.'
+                : 'Não há registro de ponto neste dia — registre a entrada e a saída na aba Jornada antes de apontar atividades.'], 422);
         }
 
         $me = User::find((int)Session::userId());
@@ -213,8 +224,10 @@ final class ApiController extends Controller
         }
 
         $now = date('Y-m-d H:i');
-        // Durante o descanso não é possível registrar nada
+        // Fora do ponto (jornada não iniciada ou já encerrada) e durante o
+        // descanso não é possível registrar nada
         if (in_array($op, ['start', 'finish', 'pause', 'resume'], true)) {
+            $this->rejectIfNoPonto($now);
             $this->rejectIfInBreak($now, 'Você está em horário de descanso');
         }
         switch ($op) {
@@ -262,6 +275,7 @@ final class ApiController extends Controller
                             $this->json(['error' => 'Horário inválido: use o formato AAAA-MM-DD HH:MM.'], 422);
                         }
                         if ($v !== '') {
+                            $this->rejectIfNoPonto($v);
                             $this->rejectIfInBreak($v, 'O horário informado cai no descanso');
                         }
                         $set[$f] = $v === '' ? null : $v;
@@ -294,6 +308,105 @@ final class ApiController extends Controller
         }
         $this->ownActivityOr404((int)$phase['activity_id']);
         Phase::deletePause($id);
+        $this->json(['ok' => true]);
+    }
+
+    /* ---------------- Ponto (início/término da jornada) ---------------- */
+
+    /** Registros de ponto do próprio usuário (aba Jornada e barra do dia). */
+    public function ponto(): void
+    {
+        $this->requireProfessorCapable();
+        $uid = (int)Session::userId();
+        Ponto::autoCloseOpen($uid);
+        $from = $this->dateParam('from') ?: date('Y-m-d', strtotime('-45 days'));
+        $this->json(['records' => Ponto::forUser($uid, $from, $this->dateParam('to'))]);
+    }
+
+    /** "Iniciar jornada": abre o ponto de hoje com a hora atual. */
+    public function pontoIn(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $uid = (int)Session::userId();
+        Ponto::autoCloseOpen($uid);
+        $date = date('Y-m-d');
+        foreach (Saude::forUser($uid, $date, $date) as $l) {
+            if ($l['type'] === 'afastamento') {
+                $this->json(['error' => 'Há afastamento médico registrado hoje — a jornada não pode ser iniciada.'], 422);
+            }
+        }
+        $rec = Ponto::forDay($uid, $date);
+        if ($rec) {
+            $this->json(['error' => empty($rec['clock_out'])
+                ? 'A jornada de hoje já foi iniciada às ' . $rec['clock_in'] . '.'
+                : 'A jornada de hoje já foi registrada (' . $rec['clock_in'] . '–' . $rec['clock_out'] . '). Corrija o ponto na aba Jornada, se precisar.'], 422);
+        }
+        $id = Ponto::create($uid, $date, date('H:i'));
+        $this->json(['ok' => true, 'id' => $id]);
+    }
+
+    /** "Encerrar jornada": fecha o ponto de hoje com a hora atual. */
+    public function pontoOut(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $uid = (int)Session::userId();
+        $rec = Ponto::forDay($uid, date('Y-m-d'));
+        if (!$rec || !empty($rec['clock_out'])) {
+            $this->json(['error' => 'Não há jornada em aberto hoje para encerrar.'], 422);
+        }
+        $now = date('H:i');
+        if ($now <= $rec['clock_in']) {
+            $this->json(['error' => 'Aguarde ao menos um minuto após o início para encerrar a jornada.'], 422);
+        }
+        Ponto::close((int)$rec['id'], $now);
+        $this->json(['ok' => true]);
+    }
+
+    /** Registra ou corrige o ponto de um dia (entrada/saída manuais). */
+    public function pontoSet(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $data = $this->body();
+        $uid = (int)Session::userId();
+        $date = (string)($data['date'] ?? '');
+        $in = (string)($data['in'] ?? '');
+        $out = trim((string)($data['out'] ?? ''));
+        if (!$this->isValidDate($date) || $date > date('Y-m-d') || !$this->isValidTime($in)) {
+            $this->json(['error' => 'Informe uma data (até hoje) e o horário de entrada.'], 422);
+        }
+        if ($out === '' && $date < date('Y-m-d')) {
+            $this->json(['error' => 'Para dias anteriores, informe também o horário de saída.'], 422);
+        }
+        if ($out !== '' && (!$this->isValidTime($out) || $out <= $in)) {
+            $this->json(['error' => 'A saída deve ser depois da entrada.'], 422);
+        }
+        foreach (Saude::forUser($uid, $date, $date) as $l) {
+            if ($l['type'] === 'afastamento') {
+                $this->json(['error' => 'Há afastamento médico registrado neste dia — não é possível registrar ponto.'], 422);
+            }
+        }
+        $rec = Ponto::forDay($uid, $date);
+        if ($rec) {
+            Ponto::setTimes((int)$rec['id'], $in, $out === '' ? null : $out);
+            $this->json(['ok' => true, 'id' => (int)$rec['id']]);
+        }
+        $id = Ponto::create($uid, $date, $in, $out === '' ? null : $out);
+        $this->json(['ok' => true, 'id' => $id]);
+    }
+
+    public function pontoDelete(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $id = (int)($this->body()['id'] ?? 0);
+        $rec = $id > 0 ? Ponto::find($id) : null;
+        if (!$rec || (int)$rec['user_id'] !== (int)Session::userId()) {
+            $this->json(['error' => 'Registro de ponto não encontrado.'], 404);
+        }
+        Ponto::delete($id);
         $this->json(['ok' => true]);
     }
 
@@ -688,6 +801,28 @@ final class ApiController extends Controller
         $eff = array_merge($phase, $set);
         if (!empty($eff['real_start']) && !empty($eff['real_end']) && $eff['real_end'] <= $eff['real_start']) {
             $this->json(['error' => 'O término real deve ser depois do início real da etapa.'], 422);
+        }
+    }
+
+    /**
+     * Recusa registros de trabalho fora do ponto: sem jornada iniciada no
+     * dia, antes da entrada ou depois da saída registrada.
+     */
+    private function rejectIfNoPonto(string $datetime): void
+    {
+        $date = substr($datetime, 0, 10);
+        $time = substr($datetime, 11, 5);
+        $rec = Ponto::forDay((int)Session::userId(), $date);
+        if (!$rec) {
+            $this->json(['error' => $date === date('Y-m-d')
+                ? 'Inicie a jornada de trabalho (botão "Iniciar jornada", no topo) antes de registrar as etapas.'
+                : "Não há registro de ponto em $date — registre a entrada e a saída na aba Jornada antes de apontar este horário."], 422);
+        }
+        if ($time < $rec['clock_in']) {
+            $this->json(['error' => "O horário fica antes do início da jornada registrada ({$rec['clock_in']})."], 422);
+        }
+        if (!empty($rec['clock_out']) && $time > $rec['clock_out']) {
+            $this->json(['error' => "A jornada deste dia já foi encerrada às {$rec['clock_out']} — o horário fica fora do ponto. Corrija o ponto na aba Jornada, se precisar."], 422);
         }
     }
 
