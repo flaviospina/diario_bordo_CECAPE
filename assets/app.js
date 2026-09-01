@@ -1110,10 +1110,12 @@ function dayBounds(list) {
   }));
   const useReal = rs.length > 0;
   const starts = useReal ? rs : ps;
-  const ends = useReal ? (re.length ? re : rs) : pe;
+  // Sem nenhum término real, o dia está em curso (fim = null)
+  const ends = useReal ? re : pe;
   return {
     inicio: starts.length ? starts.reduce((m, v) => v < m ? v : m) : null,
     fim: ends.length ? ends.reduce((m, v) => v > m ? v : m) : null,
+    emCurso: useReal && !re.length,
     allReal: useReal && !missingReal
   };
 }
@@ -1136,41 +1138,36 @@ function simplifiedRows(data) {
     // Dia de afastamento médico: linha própria, sem horários de trabalho
     if (afastadoDias.includes(day)) {
       const l = health.find(x => x.type === 'afastamento' && day >= x.date && day <= (x.end_date || x.date));
+      const periodo = l ? `${l.date.split('-').reverse().slice(0, 2).join('/')} a ${(l.end_date || l.date).split('-').reverse().slice(0, 2).join('/')}` : '';
       return {
         day, inicio: '—', fim: '—',
-        descanso: `Afastamento médico${l && l.certificate_file ? ' (com atestado)' : ''}`,
+        descanso: `Afastamento médico (${periodo}) — ${l && l.certificate_file ? 'atestado entregue' : 'sem atestado'}`,
         liquido: null, marcador: '', afastado: true
       };
     }
     const list = data.activities.filter(a => a.date === day);
     const dayBreaks = data.breaks.filter(b => b.date === day);
     const daySaidas = health.filter(l => l.type === 'saida' && l.date === day);
-    const { inicio, fim, allReal } = dayBounds(list);
+    const { inicio, fim, emCurso, allReal } = dayBounds(list);
 
-    // Horas trabalhadas = soma das etapas (idêntico ao relatório detalhado)
+    // Horas trabalhadas = soma das etapas CONCLUÍDAS (idêntico ao detalhado).
+    // Etapa em aberto não computa; dia sem etapa concluída mostra "—".
     let real = 0, hasReal = false;
     list.forEach(a => {
       const m = realDuration(a, winsAll);
       if (m != null) { real += m; hasReal = true; }
     });
-    let liquido = null;
-    if (hasReal) {
-      liquido = real;
-    } else if (list.length) {
-      // Dia só com previsão: estima pela duração prevista das etapas
-      liquido = list.reduce((s, a) => s + a.phases.reduce((s2, p) =>
-        s2 + (realNetMinutes(p.prev_start, p.prev_end, winsAll, []) || 0), 0), 0);
-    }
+    const liquido = hasReal ? real : null;
 
     const partes = dayBreaks.map(b => `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`)
-      .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'}${l.certificate_file ? ' (atestado)' : ''}`));
+      .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'} ${l.certificate_file ? '(atestado entregue)' : '(sem atestado)'}`));
     return {
       day,
       inicio: inicio ? fmtTimeRel(inicio, day) : '—',
-      fim: fim ? fmtTimeRel(fim, day) : '—',
+      fim: fim ? fmtTimeRel(fim, day) : (emCurso ? 'em curso' : '—'),
       descanso: partes.join('; ') || '—',
       liquido,
-      marcador: allReal ? '' : ' *'
+      marcador: (list.length && !allReal) ? ' *' : ''
     };
   });
 }
@@ -1225,7 +1222,7 @@ function buildSimplifiedHtml(data) {
       </tbody>
       <tfoot><tr><td colspan="4"><b>Total (${rows.length} dia${rows.length !== 1 ? 's' : ''})</b></td><td><b>${fmtDuration(totalMin)}</b></td></tr></tfoot>
     </table>
-    ${temPrevisto ? '<p class="paper-note">* dia com etapas ainda sem registro de horário real (horários previstos ou parciais).</p>' : ''}
+    ${temPrevisto ? '<p class="paper-note">* dia com etapas ainda em andamento ou sem registro real — as horas somam apenas as etapas concluídas.</p>' : ''}
     <p class="paper-issued">Documento emitido em ${new Date().toLocaleString('pt-BR')} pelo Diário de Bordo CECAPE.</p>
     ${signBlockHtml(prof)}
   </div>`;
@@ -1245,17 +1242,24 @@ function buildDetailedHtml(data) {
   data.activities.forEach(a => { totalMin += realDuration(a, wins) || 0; });
   const body = days.map(day => {
     if (afastadoDias.includes(day)) {
-      return `<div class="p-day"><h2>${fmtDay(day)} — 🏥 Afastamento médico</h2>
-        <p class="p-desc">Dia coberto por afastamento médico registrado no sistema.</p></div>`;
+      const l = health.find(x => x.type === 'afastamento' && day >= x.date && day <= (x.end_date || x.date));
+      const periodo = l ? `${l.date.split('-').reverse().join('/')} a ${(l.end_date || l.date).split('-').reverse().join('/')}` : '';
+      const cert = l && l.certificate_file;
+      return `<div class="p-day"><h2>${fmtDay(day)} — 🏥 Afastamento médico ${cert ? '(atestado entregue)' : '(sem atestado)'}</h2>
+        <p class="p-desc">Período de afastamento definido pelo médico: ${periodo}.${l && l.note ? ' Observação: ' + esc(l.note) + '.' : ''}
+        ${cert ? ` <a class="paper-link no-print" href="index.php?r=api/atestado&id=${l.id}">📎 ver atestado</a>` : ''}</p></div>`;
     }
     const list = data.activities.filter(a => a.date === day);
     const dayBreaks = data.breaks.filter(b => b.date === day);
     const daySaidas = health.filter(l => l.type === 'saida' && l.date === day);
     const extras = dayBreaks.map(b => `${BREAK_LABEL[b.type]} ${b.start_time}–${b.end_time}`)
-      .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'}`));
+      .concat(daySaidas.map(l => `Saída médica ${l.start_time}–${l.end_time || 'sem retorno'} ${l.certificate_file ? '(atestado entregue)' : '(sem atestado)'}`));
+    const atestadoLinks = daySaidas.filter(l => l.certificate_file)
+      .map(l => `<a class="paper-link no-print" href="index.php?r=api/atestado&id=${l.id}">📎 ver atestado da saída médica</a>`).join(' ');
     return `
     <div class="p-day">
       <h2>${fmtDay(day)}${extras.length ? ' — ' + extras.join(' · ') : ''}</h2>
+      ${atestadoLinks ? `<p class="p-desc">${atestadoLinks}</p>` : ''}
       ${list.map(a => `
         <div class="p-act">
           <h3>${esc(a.title)} <small>[${STATUS_LABEL[a.status]}${a.category ? ' · ' + esc(a.category) : ''}]</small></h3>
@@ -1272,7 +1276,7 @@ function buildDetailedHtml(data) {
               <td>${fmtDuration(realNetMinutes(p.real_start, p.real_end, wins, p.pauses))}</td>
             </tr>`; }).join('')}</tbody>
           </table>
-        </div>`).join('') || '<p class="p-desc">Sem atividades neste dia (apenas descanso registrado).</p>'}
+        </div>`).join('') || '<p class="p-desc">Sem atividades de trabalho registradas neste dia.</p>'}
     </div>`;
   }).join('');
   return `

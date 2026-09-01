@@ -835,6 +835,8 @@ a.link:hover { text-decoration: underline; }
 .paper-table tfoot td { background: #e6ecf5; font-weight: 700; color: #10233d; border-bottom: none; }
 
 .paper-note { font-size: 11px; color: #7a8896; margin-top: 6px; }
+.paper-link { color: #1d4ed8; font-weight: 700; text-decoration: underline; font-size: 12px; }
+.paper-link:hover { color: #0f2044; }
 .paper-issued { font-size: 11px; color: #7a8896; margin-top: 14px; }
 .paper-total { margin-top: 12px; font-size: 13px; color: #10233d; }
 
