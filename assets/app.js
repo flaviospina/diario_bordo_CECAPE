@@ -354,9 +354,12 @@ function phaseRowHtml(p, editable) {
     }
     actions += `<button class="btn-sm btn-muted" data-phase="${p.id}" data-op="edit" title="Editar horários manualmente">Editar</button>`;
   }
-  const intervals = pauseIntervals(p, (p.real_start || '').slice(0, 10));
+  const baseDay = (p.real_start || '').slice(0, 10);
+  const pauseItems = (p.pauses || []).map(pz =>
+    `<span class="pause-item">${fmtTimeRel(pz.start_dt, baseDay)}→${pz.end_dt ? fmtTimeRel(pz.end_dt, baseDay) : 'em pausa'}${editable ? `<button class="pause-del" data-pause="${pz.id}" title="Excluir esta pausa (registrada por engano)">✕</button>` : ''}</span>`
+  ).join(' ');
   const pauseInfo = (pausedMin || paused)
-    ? `<span class="pause-info" title="Pausas: ${esc(intervals)}">⏸ ${paused ? 'em pausa' : ''}${paused && pausedMin ? ' · ' : ''}${pausedMin ? 'pausas ' + fmtDuration(pausedMin) : ''}${intervals ? ` <small>(${esc(intervals)})</small>` : ''}</span>`
+    ? `<span class="pause-info">⏸ ${paused ? 'em pausa' : ''}${paused && pausedMin ? ' · ' : ''}${pausedMin ? 'pausas ' + fmtDuration(pausedMin) : ''} ${pauseItems}</span>`
     : '';
   return `
     <div class="phase ${cls}">
@@ -517,6 +520,15 @@ function bindListEvents() {
       await load();
       await loadFormBreaks();
       toast('Descanso removido.');
+    } catch (e) { toast(e.message); }
+  }));
+
+  $$('#list [data-pause]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Excluir esta pausa? O tempo dela voltará a contar como trabalho.')) return;
+    try {
+      await api('pause-delete', { body: { id: btn.dataset.pause } });
+      await load();
+      toast('Pausa excluída — horas recalculadas.');
     } catch (e) { toast(e.message); }
   }));
 

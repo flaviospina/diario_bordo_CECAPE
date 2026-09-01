@@ -58,6 +58,7 @@ $router->add('POST', 'api/create', ApiController::class, 'create');
 $router->add('POST', 'api/update-activity', ApiController::class, 'updateActivity');
 $router->add('POST', 'api/delete', ApiController::class, 'delete');
 $router->add('POST', 'api/phase', ApiController::class, 'phase');
+$router->add('POST', 'api/pause-delete', ApiController::class, 'pauseDelete');
 $router->add('POST', 'api/break-create', ApiController::class, 'breakCreate');
 $router->add('POST', 'api/break-delete', ApiController::class, 'breakDelete');
 

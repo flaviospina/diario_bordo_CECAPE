@@ -281,6 +281,22 @@ final class ApiController extends Controller
         $this->json(['ok' => true]);
     }
 
+    /** Exclui uma pausa registrada por engano (corrige o cômputo de horas). */
+    public function pauseDelete(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $id = (int)($this->body()['id'] ?? 0);
+        $pause = $id > 0 ? Phase::findPause($id) : null;
+        $phase = $pause ? Phase::find((int)$pause['phase_id']) : null;
+        if (!$phase) {
+            $this->json(['error' => 'Pausa não encontrada.'], 404);
+        }
+        $this->ownActivityOr404((int)$phase['activity_id']);
+        Phase::deletePause($id);
+        $this->json(['ok' => true]);
+    }
+
     /* ---------------- Descansos (almoço/janta) ---------------- */
 
     public function breakCreate(): void

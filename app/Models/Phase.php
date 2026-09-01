@@ -47,6 +47,19 @@ final class Phase
             ->execute([':e' => $end, ':id' => $pauseId]);
     }
 
+    public static function findPause(int $pauseId): ?array
+    {
+        $stmt = Database::pdo()->prepare('SELECT * FROM phase_pauses WHERE id = :id');
+        $stmt->execute([':id' => $pauseId]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    public static function deletePause(int $pauseId): void
+    {
+        Database::pdo()->prepare('DELETE FROM phase_pauses WHERE id = :id')->execute([':id' => $pauseId]);
+    }
+
     public static function deletePauses(int $phaseId): void
     {
         Database::pdo()->prepare('DELETE FROM phase_pauses WHERE phase_id = :p')->execute([':p' => $phaseId]);
