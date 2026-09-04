@@ -42,11 +42,12 @@ final class User
     }
 
     public static function create(string $username, string $name, string $rm, string $role,
-                                  ?array $phases, string $passwordHash): int
+                                  ?array $phases, string $passwordHash, array $director = []): int
     {
         $stmt = Database::pdo()->prepare(
-            'INSERT INTO users (username, name, rm, role, phases_json, password_hash, created_at)
-             VALUES (:u, :n, :rm, :r, :p, :h, :c)'
+            'INSERT INTO users (username, name, rm, role, phases_json, password_hash,
+                                director_name, director_unit, created_at)
+             VALUES (:u, :n, :rm, :r, :p, :h, :dn, :du, :c)'
         );
         $stmt->execute([
             ':u' => $username,
@@ -55,6 +56,8 @@ final class User
             ':r' => $role,
             ':p' => $phases === null ? null : json_encode($phases, JSON_UNESCAPED_UNICODE),
             ':h' => $passwordHash,
+            ':dn' => (string)($director['name'] ?? ''),
+            ':du' => (string)($director['unit'] ?? ''),
             ':c' => date('Y-m-d H:i:s'),
         ]);
         return (int)Database::pdo()->lastInsertId();
@@ -63,7 +66,7 @@ final class User
     /** Atualiza apenas os campos permitidos que forem informados. */
     public static function update(int $id, array $fields): void
     {
-        $allowed = ['name', 'rm', 'phases_json', 'password_hash', 'active'];
+        $allowed = ['name', 'rm', 'phases_json', 'password_hash', 'active', 'director_name', 'director_unit'];
         $set = [];
         $params = [':id' => $id];
         foreach ($allowed as $f) {
@@ -86,9 +89,25 @@ final class User
         return (is_array($decoded) && $decoded) ? $decoded : DEFAULT_PHASES;
     }
 
+    /**
+     * Direção que responde pelo professor (assina os relatórios). Sem
+     * cadastro próprio, vale a direção padrão do sistema — professores de
+     * áreas diferentes podem responder a direções e lotações distintas.
+     */
+    public static function director(array $u): array
+    {
+        $name = trim((string)($u['director_name'] ?? ''));
+        $unit = trim((string)($u['director_unit'] ?? ''));
+        return [
+            'name' => $name !== '' ? $name : DIRECTOR_NAME,
+            'unit' => $unit !== '' ? $unit : DIRECTOR_UNIT,
+        ];
+    }
+
     /** Representação segura para o front-end (sem hash de senha). */
     public static function publicView(array $u): array
     {
+        $director = self::director($u);
         return [
             'id' => (int)$u['id'],
             'username' => $u['username'],
@@ -97,6 +116,11 @@ final class User
             'role' => $u['role'],
             'active' => (int)$u['active'],
             'phases' => $u['role'] === 'gestor' ? null : self::phases($u),
+            // Vazios significam "usa a direção padrão" (útil no formulário)
+            'director_name' => (string)($u['director_name'] ?? ''),
+            'director_unit' => (string)($u['director_unit'] ?? ''),
+            'director' => $director['name'],
+            'director_role' => 'Direção · ' . $director['unit'],
         ];
     }
 }

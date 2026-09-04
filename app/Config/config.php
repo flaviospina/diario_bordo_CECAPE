@@ -37,9 +37,15 @@ const LOGOS = [
     ['file' => 'logo-cecape-new.png', 'alt' => 'CECAPE'],
 ];
 
-// Direção que assina os relatórios
+/*
+ * Direção padrão que assina os relatórios. Cada conta de professor pode ter
+ * a sua própria direção e lotação (cadastro de contas) — professores de
+ * áreas diferentes respondem a diretores diferentes; sem cadastro próprio,
+ * vale a direção abaixo.
+ */
 const DIRECTOR_NAME = 'Maiberte Brogliato';
-const DIRECTOR_ROLE = 'Direção · CECAPE';
+const DIRECTOR_UNIT = 'CECAPE';
+const DIRECTOR_ROLE = 'Direção · ' . DIRECTOR_UNIT;
 
 // Perfis de acesso
 const ROLE_LABELS = ['admin' => 'Administrador', 'gestor' => 'Gestão', 'professor' => 'Professor'];

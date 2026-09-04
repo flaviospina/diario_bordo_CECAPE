@@ -12,7 +12,7 @@ Diário de bordo multiusuário para registro das atividades executadas em home o
 | **Gestão** | Maiberte Brogliato (`maiberte`) e Therezinha (`therezinha`) | Consulta o diário de qualquer professor e gera os relatórios (simplificado ou detalhado) |
 | **Professor** | Contas criadas pelo administrador | Registra as próprias atividades, etapas e descansos; gera o próprio relatório com campos de assinatura |
 
-Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca a própria senha no painel ("Trocar minha senha"). Somente o administrador cria contas novas (perfil professor), definindo **nome, RM (registro de matrícula), usuário e as etapas de trabalho** conforme a função — ex.: "Planejamento / Execução / Verificação e ajustes / Conclusão e registro" — em qualquer quantidade, nome e peso.
+Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca a própria senha no painel ("Trocar minha senha"). Somente o administrador cria contas novas (perfil professor), definindo **nome, RM (registro de matrícula), usuário, a direção responsável (nome do diretor e lotação) e as etapas de trabalho** conforme a função — ex.: "Planejamento / Execução / Verificação e ajustes / Conclusão e registro" — em qualquer quantidade, nome e peso.
 
 ## Funcionalidades
 
@@ -46,7 +46,7 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 - **Detalhado**: todas as atividades e etapas do período, com previsão × real.
 - **Folha de ponto** (fechamento do RH): entrada e saída registradas pelo ponto, intervalos do dia e horas do ponto (entrada → saída, descontados descansos e saídas médicas); saídas automáticas marcadas com ¹; dias de afastamento em linha própria com o status do atestado. Dias trabalhados **sem ponto registrado** (meses anteriores à adoção do ponto) aparecem com os horários deduzidos dos apontamentos, marcados com ² até o ponto ser gerado.
 - Seletor de **Mês** que preenche o período com o mês inteiro (vale para os três tipos), além das datas livres.
-- Todos saem com **campos de assinatura**: Maiberte Brogliato (Direção · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
+- Todos saem com **campos de assinatura**: a **direção responsável pelo professor** (nome e lotação cadastrados na conta — professores de áreas diferentes assinam com direções diferentes; sem cadastro próprio vale a direção padrão, Maiberte Brogliato · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
 - A prévia exibida se **atualiza automaticamente** a cada alteração (atestado anexado, ponto corrigido, etapa editada), de modo que impressão e PDF nunca saiam com dados antigos; havendo mais de um registro de saúde no mesmo dia, prevalece o que tem atestado anexado.
 - Impressão em layout claro de documento; PDF gerado no navegador (jsPDF), com fallback para a impressão.
 
@@ -79,7 +79,7 @@ app/
 └── Views/                    Layout, login e painel (abas por perfil)
 ```
 
-Tabelas: `users` (perfil, RM, etapas em JSON, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks` (intervalos), `work_schedules` (jornada semanal), `hour_bank` (banco de horas), `medical_leaves` (saúde, com atestado), `time_clock` (ponto diário: entrada, saída e marcação de encerramento automático), `login_attempts`. No MySQL, `phases` e `phase_pauses` têm chave estrangeira com `ON DELETE CASCADE`. Migrações automáticas: banco SQLite antigo de usuário único ganha a coluna `user_id` e preserva a senha cadastrada; SQLite → MySQL importa tudo na primeira conexão.
+Tabelas: `users` (perfil, RM, etapas em JSON, direção responsável, hash de senha), `activities` (por usuário), `phases`, `phase_pauses` (pausas de etapa), `breaks` (intervalos), `work_schedules` (jornada semanal), `hour_bank` (banco de horas), `medical_leaves` (saúde, com atestado), `time_clock` (ponto diário: entrada, saída e marcação de encerramento automático), `login_attempts`. No MySQL, `phases` e `phase_pauses` têm chave estrangeira com `ON DELETE CASCADE`. Migrações automáticas: banco SQLite antigo de usuário único ganha a coluna `user_id` e preserva a senha cadastrada; SQLite → MySQL importa tudo na primeira conexão.
 
 ## Segurança
 

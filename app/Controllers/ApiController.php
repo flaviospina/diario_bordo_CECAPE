@@ -823,8 +823,14 @@ final class ApiController extends Controller
             $this->json(['error' => 'Este nome de usuário já está em uso.'], 422);
         }
         $phases = $this->sanitizePhases($data['phases'] ?? null) ?: DEFAULT_PHASES;
+        // Direção que responde pelo professor (vazio = direção padrão)
+        $director = [
+            'name' => mb_substr(trim((string)($data['director_name'] ?? '')), 0, 200),
+            'unit' => mb_substr(trim((string)($data['director_unit'] ?? '')), 0, 200),
+        ];
 
-        $id = User::create($username, $name, $rm, 'professor', $phases, password_hash($password, PASSWORD_DEFAULT));
+        $id = User::create($username, $name, $rm, 'professor', $phases,
+                           password_hash($password, PASSWORD_DEFAULT), $director);
         $this->json(['ok' => true, 'id' => $id]);
     }
 
@@ -849,6 +855,11 @@ final class ApiController extends Controller
         }
         if (array_key_exists('rm', $data)) {
             $fields['rm'] = mb_substr(trim((string)$data['rm']), 0, 30);
+        }
+        foreach (['director_name' => 'director_name', 'director_unit' => 'director_unit'] as $in => $col) {
+            if (array_key_exists($in, $data)) {
+                $fields[$col] = mb_substr(trim((string)$data[$in]), 0, 200);
+            }
         }
         if (array_key_exists('phases', $data) && $user['role'] !== 'gestor') {
             $phases = $this->sanitizePhases($data['phases']);

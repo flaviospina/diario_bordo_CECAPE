@@ -322,7 +322,7 @@ $admin = $role === 'admin';
       <section id="tab-contas" class="tab-panel" hidden>
         <div class="panel-card">
           <div class="panel-title" id="u-form-title">Nova conta de professor</div>
-          <p class="hint">Somente o administrador cria contas. Defina o nome, o RM, o usuário de acesso e as etapas de trabalho conforme a função do professor — elas preenchem automaticamente o formulário de atividades dele.</p>
+          <p class="hint">Somente o administrador cria contas. Defina o nome, o RM, o usuário de acesso, a <b>direção que responde pelo professor</b> (nome e lotação, que assinam os relatórios dele) e as etapas de trabalho conforme a função — elas preenchem automaticamente o formulário de atividades dele.</p>
           <form id="user-form">
             <input type="hidden" id="u-id" value="">
             <div class="form-grid">
@@ -341,6 +341,22 @@ $admin = $role === 'admin';
               <div class="form-group col-6">
                 <label class="form-label" for="u-password">Senha inicial <span class="req">*</span></label>
                 <input type="text" id="u-password" class="form-control" minlength="8" placeholder="mín. 8 caracteres">
+              </div>
+              <div class="col-12" id="u-director-wrap">
+                <div class="sub-block">
+                  <h3 class="phase-editor-label">Direção responsável (assina os relatórios deste professor)</h3>
+                  <div class="form-grid">
+                    <div class="form-group col-6">
+                      <label class="form-label" for="u-director-name">Nome do(a) diretor(a)</label>
+                      <input type="text" id="u-director-name" class="form-control" maxlength="200" placeholder="<?= e(DIRECTOR_NAME) ?> (padrão)">
+                    </div>
+                    <div class="form-group col-6">
+                      <label class="form-label" for="u-director-unit">Lotação do(a) diretor(a)</label>
+                      <input type="text" id="u-director-unit" class="form-control" maxlength="200" placeholder="<?= e(DIRECTOR_UNIT) ?> (padrão)">
+                    </div>
+                  </div>
+                  <p class="hint">Deixe em branco para usar a direção padrão do sistema (<?= e(DIRECTOR_NAME) ?> · <?= e(DIRECTOR_UNIT) ?>). Professores de áreas diferentes podem responder a direções e lotações distintas — a assinatura dos relatórios segue o que estiver aqui.</p>
+                </div>
               </div>
               <div class="col-12" id="u-phases-wrap">
                 <div class="phase-editor">
@@ -362,7 +378,7 @@ $admin = $role === 'admin';
           <div class="table-wrap">
             <table class="data-table" id="users-table">
               <thead>
-                <tr><th>Nome</th><th>Usuário</th><th>RM</th><th>Perfil</th><th>Etapas</th><th>Status</th><th>Ações</th></tr>
+                <tr><th>Nome</th><th>Usuário</th><th>RM</th><th>Perfil</th><th>Direção responsável</th><th>Etapas</th><th>Status</th><th>Ações</th></tr>
               </thead>
               <tbody></tbody>
             </table>

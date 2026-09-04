@@ -1172,6 +1172,9 @@ function resetUserForm() {
   $('#u-id').value = '';
   $('#u-name').value = '';
   $('#u-rm').value = '';
+  $('#u-director-name').value = '';
+  $('#u-director-unit').value = '';
+  $('#u-director-wrap').style.display = '';
   $('#u-username').value = '';
   $('#u-username').disabled = false;
   $('#u-password').value = '';
@@ -1194,6 +1197,8 @@ function fillUserForm(u) {
   $('#u-id').value = u.id;
   $('#u-name').value = u.name;
   $('#u-rm').value = u.rm || '';
+  $('#u-director-name').value = u.director_name || '';
+  $('#u-director-unit').value = u.director_unit || '';
   $('#u-username').value = u.username;
   $('#u-username').disabled = true;
   $('#u-password').value = '';
@@ -1204,6 +1209,8 @@ function fillUserForm(u) {
   $('#u-cancel').style.display = '';
   const hasPhases = u.role !== 'gestor';
   $('#u-phases-wrap').style.display = hasPhases ? '' : 'none';
+  // A direção responsável só faz sentido para quem gera relatório próprio
+  $('#u-director-wrap').style.display = hasPhases ? '' : 'none';
   if (hasPhases) {
     $('#u-phase-rows').innerHTML = '';
     (u.phases || defaultPhasesJs()).forEach(p => userPhaseRow(p.name, p.weight));
@@ -1223,6 +1230,7 @@ async function loadUsers() {
       <td class="cell-code">${esc(u.username)}</td>
       <td>${esc(u.rm || '—')}</td>
       <td><span class="badge ${roleBadge[u.role]}">${roleLabel[u.role]}</span></td>
+      <td>${u.role === 'gestor' ? '—' : `${esc(u.director)}<br><small>${esc(u.director_role)}${u.director_name ? '' : ' (padrão)'}</small>`}</td>
       <td>${u.phases ? u.phases.length + ' etapa' + (u.phases.length !== 1 ? 's' : '') : '—'}</td>
       <td>${u.active ? '<span class="badge badge-green">Ativa</span>' : '<span class="badge badge-red">Desativada</span>'}</td>
       <td class="action-cell">
@@ -1254,6 +1262,8 @@ async function submitUser(ev) {
   const body = {
     name: $('#u-name').value.trim(),
     rm: $('#u-rm').value.trim(),
+    director_name: $('#u-director-name').value.trim(),
+    director_unit: $('#u-director-unit').value.trim(),
     phases: editorPhases('#u-phase-rows')
   };
   const password = $('#u-password').value;
@@ -1393,13 +1403,22 @@ function simplifiedRows(data) {
   });
 }
 
+/** Direção que assina o relatório do professor (padrão se não cadastrada). */
+function directorOf(prof) {
+  return {
+    name: (prof && prof.director) || STATE.director,
+    role: (prof && prof.director_role) || STATE.directorRole
+  };
+}
+
 function signBlockHtml(prof) {
+  const dir = directorOf(prof);
   return `
   <div class="sign-row">
     <div class="sign">
       <span class="sign-line"></span>
-      <b>${esc(STATE.director)}</b>
-      <small>${esc(STATE.directorRole)}</small>
+      <b>${esc(dir.name)}</b>
+      <small>${esc(dir.role)}</small>
     </div>
     <div class="sign">
       <span class="sign-line"></span>
@@ -1713,12 +1732,13 @@ function pdfSignatures(doc, pageWidth, y) {
   doc.line(x2, y, x2 + w, y);
   doc.setFontSize(9);
   doc.setTextColor(20);
-  doc.text(STATE.director, half / 2, y + 5, { align: 'center' });
   const prof = STATE.reportData.professor;
+  const dir = directorOf(prof);
+  doc.text(dir.name, half / 2, y + 5, { align: 'center' });
   doc.text(prof.name, half + half / 2, y + 5, { align: 'center' });
   doc.setFontSize(7.5);
   doc.setTextColor(110);
-  doc.text(STATE.directorRole, half / 2, y + 9.5, { align: 'center' });
+  doc.text(dir.role, half / 2, y + 9.5, { align: 'center' });
   doc.text('Professor(a)' + (prof.rm ? ' · RM ' + prof.rm : ''), half + half / 2, y + 9.5, { align: 'center' });
 }
 

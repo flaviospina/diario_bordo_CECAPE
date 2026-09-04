@@ -72,6 +72,8 @@ final class Database
             `phases_json` TEXT NULL,
             `password_hash` VARCHAR(255) NOT NULL,
             `active` TINYINT NOT NULL DEFAULT 1,
+            `director_name` VARCHAR(200) NOT NULL DEFAULT \'\',
+            `director_unit` VARCHAR(200) NOT NULL DEFAULT \'\',
             `created_at` VARCHAR(19) NOT NULL' . $suffix);
         $pdo->exec('CREATE TABLE IF NOT EXISTS `activities` (
             `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -156,6 +158,16 @@ final class Database
             `created_at` VARCHAR(19) NOT NULL,
             KEY `idx_medical_user` (`user_id`, `date`, `end_date`)' . $suffix);
 
+        // Instalação anterior: ganha as colunas da direção responsável
+        $userCols = $pdo->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS
+                                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'")
+                        ->fetchAll(\PDO::FETCH_COLUMN);
+        foreach (['director_name', 'director_unit'] as $col) {
+            if (!in_array($col, $userCols, true)) {
+                $pdo->exec("ALTER TABLE `users` ADD COLUMN `$col` VARCHAR(200) NOT NULL DEFAULT ''");
+            }
+        }
+
         // Alarga a coluna type de instalações anteriores (para "saida_medica")
         $len = $pdo->query("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
                             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'breaks' AND COLUMN_NAME = 'type'")
@@ -207,7 +219,8 @@ final class Database
         self::migrateSqliteSchema($lite);
 
         $tables = [
-            'users' => ['id', 'username', 'name', 'rm', 'role', 'phases_json', 'password_hash', 'active', 'created_at'],
+            'users' => ['id', 'username', 'name', 'rm', 'role', 'phases_json', 'password_hash', 'active',
+                        'director_name', 'director_unit', 'created_at'],
             'activities' => ['id', 'user_id', 'title', 'description', 'category', 'date', 'prev_start', 'prev_end', 'created_at'],
             'phases' => ['id', 'activity_id', 'name', 'ord', 'prev_start', 'prev_end', 'real_start', 'real_end'],
             'phase_pauses' => ['id', 'phase_id', 'start_dt', 'end_dt'],
@@ -319,6 +332,8 @@ final class Database
             phases_json TEXT,
             password_hash TEXT NOT NULL,
             active INTEGER NOT NULL DEFAULT 1,
+            director_name TEXT NOT NULL DEFAULT "",
+            director_unit TEXT NOT NULL DEFAULT "",
             created_at TEXT NOT NULL
         )');
         $pdo->exec('CREATE TABLE IF NOT EXISTS activities (
@@ -411,6 +426,14 @@ final class Database
         $cols = array_column($pdo->query('PRAGMA table_info(activities)')->fetchAll(), 'name');
         if (!in_array('user_id', $cols, true)) {
             $pdo->exec('ALTER TABLE activities ADD COLUMN user_id INTEGER');
+        }
+
+        // Instalação anterior: ganha as colunas da direção responsável
+        $userCols = array_column($pdo->query('PRAGMA table_info(users)')->fetchAll(), 'name');
+        foreach (['director_name', 'director_unit'] as $col) {
+            if (!in_array($col, $userCols, true)) {
+                $pdo->exec("ALTER TABLE users ADD COLUMN $col TEXT NOT NULL DEFAULT \"\"");
+            }
         }
 
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_activities_user_date ON activities(user_id, date)');

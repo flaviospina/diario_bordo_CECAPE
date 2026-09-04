@@ -238,14 +238,16 @@ $T = 'assets/tutorial';
         <p>A aba <b>👥 Contas</b> é exclusiva do administrador. É aqui que você cria os acessos dos professores:</p>
         <ol class="tut-steps">
           <li>Preencha <b>nome completo</b>, <b>RM (matrícula)</b>, o <b>usuário de acesso</b> e a <b>senha inicial</b> (mínimo 8 caracteres) — combine com a pessoa que ela troque no primeiro login.</li>
+          <li>Informe a <b>direção responsável</b>: o <b>nome do(a) diretor(a)</b> que responde por esse professor e a <b>lotação</b> dele(a). Como há professores de áreas diferentes, é essa dupla que assina os relatórios daquela pessoa. <b>Deixe em branco</b> para usar a direção padrão do sistema (<?= e(DIRECTOR_NAME) ?> · <?= e(DIRECTOR_UNIT) ?>).</li>
           <li>Defina as <b>etapas de trabalho</b> da função (quantidade, nomes e pesos %). Elas passam a preencher automaticamente o formulário de atividades daquele professor.</li>
           <li>Clique em <b>Criar conta</b>.</li>
         </ol>
         <figure class="tut-img">
           <img src="<?= $T ?>/tela-contas.jpg" alt="Gestão de contas">
-          <figcaption>Formulário de nova conta com o editor de etapas (destacado) e, abaixo, a lista de contas com Editar e Desativar/Reativar.</figcaption>
+          <figcaption>Formulário de nova conta com a direção responsável e o editor de etapas; abaixo, a lista de contas mostra a direção de cada uma (com "(padrão)" quando não foi cadastrada).</figcaption>
         </figure>
-        <div class="tut-tip">💡 <b>Editar</b> permite ajustar nome, RM, etapas e redefinir a senha de qualquer conta (deixe a senha vazia para manter). <b>Desativar</b> bloqueia o login sem apagar o histórico — e você não consegue desativar a própria conta.</div>
+        <p>A direção cadastrada aparece no <b>campo de assinatura</b> dos três relatórios daquele professor — simplificado, detalhado e folha de ponto —, na tela, na impressão e no PDF. Para trocar depois, use <b>Editar</b> na conta: os relatórios seguintes já saem com a nova direção.</p>
+        <div class="tut-tip">💡 <b>Editar</b> permite ajustar nome, RM, direção responsável, etapas e redefinir a senha de qualquer conta (deixe a senha vazia para manter). <b>Desativar</b> bloqueia o login sem apagar o histórico — e você não consegue desativar a própria conta.</div>
       </section>
       <?php endif; ?>
 

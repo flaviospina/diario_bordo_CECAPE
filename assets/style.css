@@ -235,6 +235,15 @@ a { text-decoration: none; color: inherit; }
   color: var(--text-muted);
   margin-bottom: 14px;
 }
+/* Bloco de campos agrupados no formulário (mesma moldura do editor de fases) */
+.sub-block {
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+  background: rgba(255,255,255,0.02);
+}
+.sub-block .hint { margin: 10px 0 0; }
+
 .phase-editor .row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
 .phase-editor .ph-name { flex: 1; }
 .phase-editor .ph-weight { width: 90px; flex-shrink: 0; }
