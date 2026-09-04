@@ -67,12 +67,14 @@ $router->add('GET', 'api/ponto', ApiController::class, 'ponto');
 $router->add('POST', 'api/ponto-in', ApiController::class, 'pontoIn');
 $router->add('POST', 'api/ponto-out', ApiController::class, 'pontoOut');
 $router->add('POST', 'api/ponto-set', ApiController::class, 'pontoSet');
+$router->add('POST', 'api/ponto-fill', ApiController::class, 'pontoFill');
 $router->add('POST', 'api/ponto-delete', ApiController::class, 'pontoDelete');
 
 // API — saúde (saídas médicas e afastamentos, com atestado)
 $router->add('POST', 'api/health-create', ApiController::class, 'healthCreate');
 $router->add('POST', 'api/health-delete', ApiController::class, 'healthDelete');
 $router->add('GET', 'api/atestado', ApiController::class, 'atestado');
+$router->add('POST', 'api/atestado-upload', ApiController::class, 'atestadoUpload');
 
 // API — jornada de trabalho e banco de horas
 $router->add('GET', 'api/schedule', ApiController::class, 'schedule');

@@ -747,6 +747,28 @@ a.link:hover { text-decoration: underline; }
 }
 .ponto-bar[hidden] { display: none; }
 
+.ponto-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0 4px;
+}
+.ponto-tools select { max-width: 190px; }
+
+.atestado-add {
+  background: rgba(34,211,238,.12);
+  border: 1px solid rgba(34,211,238,.35);
+  color: var(--cyan);
+  border-radius: 20px;
+  padding: 1px 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1.7;
+}
+.atestado-add:hover { background: rgba(34,211,238,.22); }
+
 .ponto-chip {
   display: inline-flex;
   align-items: center;

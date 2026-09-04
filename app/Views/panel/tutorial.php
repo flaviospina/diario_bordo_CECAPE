@@ -73,12 +73,18 @@ $T = 'assets/tutorial';
           <li><b>Esqueceu de encerrar?</b> O sistema fecha o ponto automaticamente no <b>fim da jornada prevista</b> que você cadastrou na aba Jornada (o registro fica marcado como <i>auto</i> e com ¹ na folha de ponto).</li>
           <li><b>Dia de afastamento médico</b> não aceita ponto — o dia inteiro fica bloqueado.</li>
         </ul>
-        <h3>Corrigir ou registrar um dia esquecido</h3>
-        <p>Na aba <b>🕐 Jornada</b>, o card <b>"⏱ Registro de ponto (folha do RH)"</b> lista os últimos dias e permite <b>corrigir</b> a entrada/saída ou <b>registrar o ponto de um dia anterior</b> (informe data, entrada e saída e clique em Salvar ponto).</p>
+        <h3>Corrigir, completar ou registrar um dia esquecido</h3>
+        <p>Na aba <b>🕐 Jornada</b>, o card <b>"⏱ Registro de ponto (folha do RH)"</b> mostra o ponto do <b>mês escolhido</b> e permite:</p>
+        <ul>
+          <li><b>Corrigir</b> a entrada/saída de um dia — o botão preenche o formulário; ajuste os horários e clique em <b>Salvar ponto</b>.</li>
+          <li><b>Registrar um dia esquecido</b> — informe data, entrada e saída e clique em Salvar ponto.</li>
+          <li><b>⟳ Gerar ponto pelos apontamentos</b> — completa de uma vez todos os dias do mês que <b>têm atividades apontadas mas não têm ponto</b>, usando o primeiro início real e o último término real do dia. Ideal para fechar meses anteriores à adoção do ponto. Dias que já têm ponto <b>não são alterados</b>; depois é só conferir e ajustar o que precisar.</li>
+        </ul>
         <figure class="tut-img">
           <img src="<?= $T ?>/tela-ponto-corrigir.jpg" alt="Correção do ponto">
-          <figcaption>O card de registro de ponto: formulário de correção e a lista dos dias (a etiqueta <i>auto</i> indica encerramento automático).</figcaption>
+          <figcaption>O card de registro de ponto: seletor de mês, botão de gerar pelos apontamentos e a lista dos dias (a etiqueta <i>auto</i> indica encerramento automático).</figcaption>
         </figure>
+        <div class="tut-tip">💡 Na folha de ponto, um dia trabalhado que ainda não tem ponto registrado aparece com os horários deduzidos dos apontamentos e o marcador <b>²</b> — gere o ponto do mês para oficializar esses horários.</div>
         <div class="tut-tip">💡 No Diário, cada dia mostra a etiqueta <b>⏱ Ponto</b> com a entrada e a saída registradas — fácil de conferir com a jornada prevista ao lado.</div>
       </section>
 
@@ -118,6 +124,13 @@ $T = 'assets/tutorial';
           <img src="<?= $T ?>/tela-saude.jpg" alt="Registro de saúde">
           <figcaption>O card de Saúde: o formulário muda conforme o tipo (saída com horários; afastamento com período em dias).</figcaption>
         </figure>
+        <h3>Anexar o atestado depois</h3>
+        <p>Como o atestado só fica em mãos <b>ao fim do atendimento</b>, você pode registrar a saída médica na hora e anexar o documento mais tarde: no <b>Diário</b>, na etiqueta do registro de saúde, clique em <b>📎 anexar atestado</b> e escolha o arquivo. Se já houver um anexado, o botão <b>↻</b> substitui (o arquivo antigo é apagado).</p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-atestado.jpg" alt="Anexar atestado depois">
+          <figcaption>A etiqueta da saída médica no Diário, com o botão de anexar o atestado a qualquer momento.</figcaption>
+        </figure>
+        <div class="tut-tip">💡 Assim que o atestado é anexado, os relatórios passam a mostrar <b>"atestado entregue"</b> no lugar de "sem atestado" — sem precisar refazer o registro.</div>
         <p>Descansos e saídas médicas são <b>janelas protegidas</b>:</p>
         <ul>
           <li>a previsão de novas atividades <b>pula</b> o período;</li>

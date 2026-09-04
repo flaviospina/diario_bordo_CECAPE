@@ -14,7 +14,7 @@ let STATE = {
   director: '', directorRole: '',
   professors: [], profId: 0, professor: null,
   activities: [], breaks: [], formBreaks: [], jornada: [], health: [],
-  ponto: [], myPonto: [],
+  ponto: [], myPonto: [], todayPonto: null,
   schedule: [], hourBank: [], hourBankTotal: 0,
   phasesTemplate: [], reportData: null, reportType: 'simplificado'
 };
@@ -412,9 +412,15 @@ function healthChip(l, day, editable) {
       ? 'dia inteiro'
       : `${l.date.split('-').reverse().join('/')} a ${(l.end_date || l.date).split('-').reverse().join('/')}`;
   }
-  const atestado = l.certificate_file
+  let atestado = l.certificate_file
     ? ` <a class="health-atestado" href="index.php?r=api/atestado&id=${l.id}" title="Baixar atestado (${esc(l.certificate_name || '')})">📎 atestado</a>`
     : '';
+  // O atestado costuma chegar só depois do atendimento: anexar/trocar depois
+  if (editable) {
+    atestado += l.certificate_file
+      ? ` <button class="atestado-add" data-atestado="${l.id}" title="Substituir o atestado anexado">↻</button>`
+      : ` <button class="atestado-add" data-atestado="${l.id}" title="Anexar o atestado agora (PDF, JPG ou PNG)">📎 anexar atestado</button>`;
+  }
   const del = editable ? ` <button class="break-del" data-health="${l.id}" title="Remover registro de saúde">✕</button>` : '';
   return `<span class="health-chip">🏥 ${HEALTH_LABEL[l.type] || l.type} ${periodo}${l.note ? ` · ${esc(l.note)}` : ''}${atestado}${del}</span>`;
 }
@@ -541,6 +547,8 @@ function bindListEvents() {
     } catch (e) { toast(e.message); }
   }));
 
+  $$('#list [data-atestado]').forEach(btn => btn.addEventListener('click', () => uploadAtestado(btn.dataset.atestado)));
+
   $$('#list [data-health]').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm('Remover este registro de saúde (e o atestado anexado, se houver)?')) return;
     try {
@@ -550,6 +558,35 @@ function bindListEvents() {
       toast('Registro de saúde removido.');
     } catch (e) { toast(e.message); }
   }));
+}
+
+/**
+ * Anexa (ou substitui) o atestado de um registro de saúde já criado —
+ * o documento só fica em mãos depois do atendimento médico.
+ */
+function uploadAtestado(id) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) return toast('O atestado deve ter no máximo 5 MB.');
+    const fd = new FormData();
+    fd.append('id', id);
+    fd.append('atestado', file);
+    try {
+      toast('Enviando o atestado…');
+      const res = await fetch('index.php?r=api/atestado-upload', {
+        method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Erro ao enviar o atestado.');
+      toast('Atestado anexado — já aparece nos relatórios como "atestado entregue".');
+      await load();
+    } catch (e) { toast(e.message); }
+  });
+  input.click();
 }
 
 /* ---------------- Exportação XLS (diário) ---------------- */
@@ -771,7 +808,7 @@ async function submitBreak(ev) {
 /* ---------------- Ponto (início/término da jornada) ---------------- */
 
 function todayPontoRec() {
-  return STATE.myPonto.find(r => r.date === isoDate(new Date())) || null;
+  return STATE.todayPonto || STATE.myPonto.find(r => r.date === isoDate(new Date())) || null;
 }
 
 /** Barra fixa do dia: iniciar/encerrar jornada (fechamento da folha do RH). */
@@ -798,12 +835,51 @@ function renderPontoBar() {
   $('#btn-ponto-out')?.addEventListener('click', clockOut);
 }
 
+/** Período (mês) escolhido no card de ponto; vazio = últimos dias. */
+function pontoMonthRange() {
+  const v = $('#pt-month')?.value;
+  if (!v) return null;
+  const [y, m] = v.split('-').map(Number);
+  return { from: isoDate(new Date(y, m - 1, 1)), to: isoDate(new Date(y, m, 0)) };
+}
+
 async function refreshPonto() {
+  const range = pontoMonthRange();
+  const qs = new URLSearchParams();
+  if (range) { qs.set('from', range.from); qs.set('to', range.to); }
   try {
-    STATE.myPonto = (await api('ponto')).records || [];
+    STATE.myPonto = (await api('ponto', { qs: qs.toString() })).records || [];
   } catch { STATE.myPonto = []; }
+  // A barra do dia precisa do registro de hoje mesmo olhando outro mês
+  const today = isoDate(new Date());
+  if (!STATE.myPonto.some(r => r.date === today)) {
+    try {
+      const hoje = (await api('ponto', { qs: `from=${today}&to=${today}` })).records || [];
+      STATE.todayPonto = hoje[0] || null;
+    } catch { STATE.todayPonto = null; }
+  } else {
+    STATE.todayPonto = STATE.myPonto.find(r => r.date === today);
+  }
   renderPontoBar();
   renderPontoTable();
+}
+
+/** Cria o ponto dos dias do mês que já têm apontamentos mas não têm ponto. */
+async function fillPonto() {
+  const range = pontoMonthRange();
+  if (!range) return toast('Escolha o mês que deseja completar.');
+  const label = $('#pt-month').selectedOptions[0]?.textContent || '';
+  if (!confirm(`Gerar o ponto de ${label} a partir das atividades apontadas?\n\n`
+    + 'Cada dia com apontamentos e sem ponto recebe a entrada do primeiro início real e a saída do último término real. '
+    + 'Dias que já têm ponto registrado não são alterados.')) return;
+  try {
+    const r = await api('ponto-fill', { body: range });
+    toast(r.created
+      ? `${r.created} dia${r.created !== 1 ? 's' : ''} de ponto gerado${r.created !== 1 ? 's' : ''} — confira e ajuste na lista abaixo.`
+      : 'Nenhum dia a completar: todos os dias com apontamentos já têm ponto registrado.');
+    await refreshPonto();
+    await load();
+  } catch (e) { toast(e.message); }
 }
 
 async function clockIn() {
@@ -829,10 +905,10 @@ function renderPontoTable() {
   const tbody = $('#ponto-table tbody');
   if (!tbody) return;
   if (!STATE.myPonto.length) {
-    tbody.innerHTML = '<tr><td colspan="4" class="hb-empty">Nenhum registro de ponto ainda — use "Iniciar jornada" no topo do painel.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="hb-empty">Nenhum registro de ponto neste mês — use "Iniciar jornada" no topo do painel, o formulário acima ou "Gerar ponto pelos apontamentos".</td></tr>';
     return;
   }
-  tbody.innerHTML = STATE.myPonto.slice(0, 30).map(r => `
+  tbody.innerHTML = STATE.myPonto.slice(0, 62).map(r => `
     <tr>
       <td>${fmtDayShort(r.date)}</td>
       <td><b>${esc(r.clock_in)}</b></td>
@@ -1438,6 +1514,27 @@ function pontoDayMinutes(rec, dayBreaks, daySaidas) {
   return Math.max(0, min);
 }
 
+/**
+ * Entrada/saída deduzidas dos apontamentos do dia (primeiro início real →
+ * último término real). Usada nos dias trabalhados que ainda não têm ponto
+ * registrado — por exemplo, meses anteriores à adoção do ponto.
+ */
+function pontoEstimate(list, day) {
+  let entrada = null, saida = null;
+  list.forEach(a => a.phases.forEach(p => {
+    if (p.real_start && p.real_start.slice(0, 10) === day) {
+      const t = p.real_start.slice(11, 16);
+      if (!entrada || t < entrada) entrada = t;
+    }
+    if (p.real_end) {
+      const t = p.real_end.slice(0, 10) === day ? p.real_end.slice(11, 16)
+        : (p.real_end.slice(0, 10) > day ? '23:59' : null);
+      if (t && (!saida || t > saida)) saida = t;
+    }
+  }));
+  return entrada ? { clock_in: entrada, clock_out: saida, estimado: true } : null;
+}
+
 function pontoReportRows(data) {
   const health = data.health || [];
   const ponto = data.ponto || [];
@@ -1445,6 +1542,7 @@ function pontoReportRows(data) {
     .flatMap(l => afastDays(l, $('#r-from').value || null, $('#r-to').value || null));
   const days = [...new Set([
     ...ponto.map(r => r.date),
+    ...data.activities.map(a => a.date),
     ...health.filter(l => l.type === 'saida').map(l => l.date),
     ...afastadoDias
   ])].sort();
@@ -1458,7 +1556,9 @@ function pontoReportRows(data) {
         min: null, auto: false
       };
     }
-    const rec = ponto.find(r => r.date === day) || null;
+    const dayActs = data.activities.filter(a => a.date === day);
+    // Sem ponto batido, os horários saem dos apontamentos do dia (marcador ²)
+    const rec = ponto.find(r => r.date === day) || pontoEstimate(dayActs, day);
     const dayBreaks = (data.breaks || []).filter(b => b.date === day);
     const daySaidas = health.filter(l => l.type === 'saida' && l.date === day);
     const partes = dayBreaks.map(b => `${BREAK_LABEL[b.type] || b.type} ${b.start_time}–${b.end_time}`)
@@ -1469,7 +1569,8 @@ function pontoReportRows(data) {
       saida: rec ? (rec.clock_out || 'em aberto') : '—',
       intervalos: partes.join('; ') || '—',
       min: pontoDayMinutes(rec, dayBreaks, daySaidas),
-      auto: !!(rec && Number(rec.auto_closed))
+      auto: !!(rec && Number(rec.auto_closed)),
+      estimado: !!(rec && rec.estimado)
     };
   });
 }
@@ -1479,6 +1580,7 @@ function buildPontoHtml(data) {
   const prof = data.professor;
   const totalMin = rows.reduce((s, r) => s + (r.min || 0), 0);
   const temAuto = rows.some(r => r.auto);
+  const temEst = rows.some(r => r.estimado);
   return `
   <div class="paper" id="paper">
     <div class="paper-head">
@@ -1495,34 +1597,44 @@ function buildPontoHtml(data) {
       <tbody>
         ${rows.map(r => `<tr>
           <td>${fmtDayShort(r.day)}</td>
-          <td>${esc(r.entrada)}</td>
-          <td>${esc(r.saida)}${r.auto ? ' ¹' : ''}</td>
+          <td>${esc(r.entrada)}${r.estimado ? ' ²' : ''}</td>
+          <td>${esc(r.saida)}${r.auto ? ' ¹' : ''}${r.estimado ? ' ²' : ''}</td>
           <td>${esc(r.intervalos)}</td>
           <td>${r.min != null ? fmtDuration(r.min) : '—'}</td>
         </tr>`).join('')}
       </tbody>
       <tfoot><tr><td colspan="4"><b>Total (${rows.length} dia${rows.length !== 1 ? 's' : ''})</b></td><td><b>${fmtDuration(totalMin)}</b></td></tr></tfoot>
     </table>
-    <p class="paper-note">As horas trabalhadas consideram o ponto registrado (entrada → saída), descontados os descansos e as saídas médicas do dia.${temAuto ? '<br>¹ saída registrada automaticamente pelo sistema no fim da jornada prevista (ponto não encerrado pelo professor).' : ''}</p>
+    <p class="paper-note">As horas trabalhadas consideram o ponto registrado (entrada → saída), descontados os descansos e as saídas médicas do dia.${temAuto ? '<br>¹ saída registrada automaticamente pelo sistema no fim da jornada prevista (ponto não encerrado pelo professor).' : ''}${temEst ? '<br>² dia sem registro de ponto: horários obtidos dos apontamentos do diário (primeiro início e último término reais do dia).' : ''}</p>
     <p class="paper-issued">Documento emitido em ${new Date().toLocaleString('pt-BR')} pelo Diário de Bordo CECAPE.</p>
     ${signBlockHtml(prof)}
   </div>`;
+}
+
+/** Opções "Setembro de 2026" dos últimos meses (o atual primeiro). */
+function monthOptionsHtml(count = 13) {
+  const now = new Date();
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const v = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+    const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    out.push(`<option value="${v}">${label.charAt(0).toUpperCase() + label.slice(1)}</option>`);
+  }
+  return out.join('');
+}
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
 }
 
 /** Seletor "Mês": preenche De/Até com o mês escolhido (todos os tipos). */
 function initMonthSelector() {
   const sel = $('#r-month');
   if (!sel) return;
-  const now = new Date();
-  const opts = ['<option value="">Período livre</option>'];
-  for (let i = 0; i < 13; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const v = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-    const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-    opts.push(`<option value="${v}">${label.charAt(0).toUpperCase() + label.slice(1)}</option>`);
-  }
-  sel.innerHTML = opts.join('');
-  sel.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  sel.innerHTML = '<option value="">Período livre</option>' + monthOptionsHtml();
+  sel.value = currentMonthValue();
   sel.addEventListener('change', () => {
     if (!sel.value) return;
     const [y, m] = sel.value.split('-').map(Number);
@@ -1618,7 +1730,9 @@ function exportReportPDF() {
     doc.autoTable({
       startY: 31,
       head: [['Data', 'Entrada', 'Saída', 'Intervalos', 'Horas trabalhadas']],
-      body: rows.map(r => [fmtDayShort(r.day), r.entrada, r.saida + (r.auto ? ' ¹' : ''), r.intervalos, r.min != null ? fmtDuration(r.min) : '—']),
+      body: rows.map(r => [fmtDayShort(r.day), r.entrada + (r.estimado ? ' ²' : ''),
+                           r.saida + (r.auto ? ' ¹' : '') + (r.estimado ? ' ²' : ''),
+                           r.intervalos, r.min != null ? fmtDuration(r.min) : '—']),
       foot: [[`Total (${rows.length} dia${rows.length !== 1 ? 's' : ''})`, '', '', '', fmtDuration(totalMin)]],
       styles: { fontSize: 9, cellPadding: 2.2 },
       headStyles: { fillColor: [15, 32, 68], textColor: [255, 255, 255] },
@@ -1630,7 +1744,12 @@ function exportReportPDF() {
     let noteY = doc.lastAutoTable.finalY + 5;
     doc.text('Horas trabalhadas = ponto registrado (entrada → saída), descontados os descansos e as saídas médicas.', 14, noteY);
     if (rows.some(r => r.auto)) {
-      doc.text('¹ saída registrada automaticamente pelo sistema no fim da jornada prevista.', 14, noteY + 4);
+      noteY += 4;
+      doc.text('¹ saída registrada automaticamente pelo sistema no fim da jornada prevista.', 14, noteY);
+    }
+    if (rows.some(r => r.estimado)) {
+      noteY += 4;
+      doc.text('² dia sem registro de ponto: horários obtidos dos apontamentos do diário.', 14, noteY);
     }
   } else if (simplificado) {
     const rows = simplifiedRows(data);
@@ -1733,6 +1852,10 @@ async function initPanel() {
     // Ponto do dia (Iniciar/Encerrar jornada) e correções
     $('#pt-date').value = isoDate(now);
     $('#ponto-form').addEventListener('submit', submitPonto);
+    $('#pt-month').innerHTML = monthOptionsHtml();
+    $('#pt-month').value = currentMonthValue();
+    $('#pt-month').addEventListener('change', refreshPonto);
+    $('#btn-ponto-fill').addEventListener('click', fillPonto);
     await refreshPonto();
   }
 

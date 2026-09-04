@@ -397,6 +397,73 @@ final class ApiController extends Controller
         $this->json(['ok' => true, 'id' => $id]);
     }
 
+    /**
+     * Gera o ponto dos dias que têm apontamentos mas ainda não têm registro
+     * de entrada/saída — usado para fechar meses anteriores à adoção do
+     * ponto. Entrada = primeiro início real do dia; saída = último término
+     * real (dias sem término ficam em aberto e são fechados pela jornada).
+     * Nunca sobrescreve um ponto já registrado.
+     */
+    public function pontoFill(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $data = $this->body();
+        $from = (string)($data['from'] ?? '');
+        $to = (string)($data['to'] ?? '');
+        if (!$this->isValidDate($from) || !$this->isValidDate($to) || $to < $from) {
+            $this->json(['error' => 'Informe um período válido para gerar o ponto.'], 422);
+        }
+        $uid = (int)Session::userId();
+
+        // Dias de afastamento não recebem ponto
+        $afastados = [];
+        foreach (Saude::forUser($uid, $from, $to) as $l) {
+            if ($l['type'] !== 'afastamento') {
+                continue;
+            }
+            for ($d = $l['date']; $d <= ($l['end_date'] ?: $l['date']); $d = date('Y-m-d', strtotime("$d +1 day"))) {
+                $afastados[$d] = true;
+            }
+        }
+
+        $dias = [];
+        foreach (Activity::allWithPhases($uid, $from, $to, null) as $a) {
+            $day = (string)$a['date'];
+            foreach ($a['phases'] as $p) {
+                if (!empty($p['real_start']) && str_starts_with((string)$p['real_start'], $day)) {
+                    $t = substr((string)$p['real_start'], 11, 5);
+                    if (!isset($dias[$day]['in']) || $t < $dias[$day]['in']) {
+                        $dias[$day]['in'] = $t;
+                    }
+                }
+                if (!empty($p['real_end'])) {
+                    // Etapa que terminou no dia seguinte fecha o dia às 23:59
+                    $t = str_starts_with((string)$p['real_end'], $day) ? substr((string)$p['real_end'], 11, 5)
+                        : ((string)$p['real_end'] > $day ? '23:59' : null);
+                    if ($t !== null && (!isset($dias[$day]['out']) || $t > $dias[$day]['out'])) {
+                        $dias[$day]['out'] = $t;
+                    }
+                }
+            }
+        }
+
+        $criados = 0;
+        foreach ($dias as $day => $times) {
+            if (empty($times['in']) || isset($afastados[$day]) || Ponto::forDay($uid, $day)) {
+                continue;
+            }
+            $out = ($times['out'] ?? null);
+            if ($out !== null && $out <= $times['in']) {
+                $out = null;
+            }
+            Ponto::create($uid, $day, $times['in'], $out);
+            $criados++;
+        }
+        Ponto::autoCloseOpen($uid);
+        $this->json(['ok' => true, 'created' => $criados]);
+    }
+
     public function pontoDelete(): void
     {
         $this->requireProfessorCapable();
@@ -488,30 +555,62 @@ final class ApiController extends Controller
         $record['note'] = $note;
 
         // Atestado (opcional): PDF ou imagem, até 5 MB, guardado fora do alcance do navegador
-        $record['certificate_file'] = null;
-        $record['certificate_name'] = null;
-        $file = $_FILES['atestado'] ?? null;
-        if ($file && ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-            if ($file['error'] !== UPLOAD_ERR_OK) {
-                $this->json(['error' => 'Falha no envio do atestado. Tente novamente.'], 422);
-            }
-            if ((int)$file['size'] > ATESTADO_MAX_BYTES) {
-                $this->json(['error' => 'O atestado deve ter no máximo 5 MB.'], 422);
-            }
-            $ext = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
-            if (!in_array($ext, ATESTADO_EXTENSIONS, true)) {
-                $this->json(['error' => 'Formato do atestado inválido — envie PDF, JPG ou PNG.'], 422);
-            }
-            $stored = 'atestado-' . bin2hex(random_bytes(16)) . '.' . $ext;
-            if (!move_uploaded_file($file['tmp_name'], Saude::atestadoDir() . '/' . $stored)) {
-                $this->json(['error' => 'Não foi possível guardar o atestado. Verifique as permissões de data/.'], 500);
-            }
-            $record['certificate_file'] = $stored;
-            $record['certificate_name'] = mb_substr((string)$file['name'], 0, 200);
-        }
+        $stored = $this->storeAtestado($_FILES['atestado'] ?? null);
+        $record['certificate_file'] = $stored['file'];
+        $record['certificate_name'] = $stored['name'];
 
         $id = Saude::create((int)Session::userId(), $record);
         $this->json(['ok' => true, 'id' => $id]);
+    }
+
+    /**
+     * Anexa o atestado a um registro de saúde já criado — o documento só
+     * fica em mãos depois do atendimento médico. Substitui o anterior.
+     */
+    public function atestadoUpload(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $id = (int)($_POST['id'] ?? 0);
+        $leave = $id > 0 ? Saude::find($id) : null;
+        if (!$leave || (int)$leave['user_id'] !== (int)Session::userId()) {
+            $this->json(['error' => 'Registro de saúde não encontrado.'], 404);
+        }
+        $file = $_FILES['atestado'] ?? null;
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            $this->json(['error' => 'Escolha o arquivo do atestado (PDF, JPG ou PNG).'], 422);
+        }
+        $stored = $this->storeAtestado($file);
+        Saude::setCertificate($leave, $stored['file'], $stored['name']);
+        $this->json(['ok' => true, 'name' => $stored['name']]);
+    }
+
+    /**
+     * Valida e guarda o arquivo do atestado enviado (PDF/JPG/PNG até 5 MB),
+     * com nome aleatório em data/atestados/. Sem arquivo, devolve nulos.
+     *
+     * @return array{file: ?string, name: ?string}
+     */
+    private function storeAtestado(?array $file): array
+    {
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return ['file' => null, 'name' => null];
+        }
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $this->json(['error' => 'Falha no envio do atestado. Tente novamente.'], 422);
+        }
+        if ((int)$file['size'] > ATESTADO_MAX_BYTES) {
+            $this->json(['error' => 'O atestado deve ter no máximo 5 MB.'], 422);
+        }
+        $ext = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ATESTADO_EXTENSIONS, true)) {
+            $this->json(['error' => 'Formato do atestado inválido — envie PDF, JPG ou PNG.'], 422);
+        }
+        $stored = 'atestado-' . bin2hex(random_bytes(16)) . '.' . $ext;
+        if (!move_uploaded_file($file['tmp_name'], Saude::atestadoDir() . '/' . $stored)) {
+            $this->json(['error' => 'Não foi possível guardar o atestado. Verifique as permissões de data/.'], 500);
+        }
+        return ['file' => $stored, 'name' => mb_substr((string)$file['name'], 0, 200)];
     }
 
     public function healthDelete(): void

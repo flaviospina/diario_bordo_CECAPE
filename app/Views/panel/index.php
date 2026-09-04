@@ -246,6 +246,11 @@ $admin = $role === 'admin';
               <button class="btn-primary" type="submit">Salvar ponto</button>
             </div>
           </form>
+          <div class="ponto-tools">
+            <label class="jr-lbl" for="pt-month">Mês</label>
+            <select id="pt-month" class="form-control form-sm form-select"></select>
+            <button type="button" class="btn-outline btn-sm" id="btn-ponto-fill" title="Cria o ponto dos dias que já têm atividades apontadas, usando o primeiro início e o último término reais do dia">⟳ Gerar ponto pelos apontamentos</button>
+          </div>
           <div class="table-wrap">
             <table class="data-table" id="ponto-table">
               <thead><tr><th>Data</th><th>Entrada</th><th>Saída</th><th>Ações</th></tr></thead>

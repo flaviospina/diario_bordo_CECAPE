@@ -20,13 +20,13 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 - Botões **▶ Iniciar jornada / ⏹ Encerrar jornada** na barra do topo registram a entrada e a saída do dia — é o registro usado no fechamento da folha do RH.
 - **Bloqueio total sem o ponto**: propor atividades e operar etapas (iniciar/pausar/retomar/concluir/editar) só com a jornada do dia iniciada; horários antes da entrada ou depois da saída registrada são recusados.
 - **Encerramento automático**: ponto esquecido em aberto é fechado no **fim da jornada semanal prevista** do professor (marcado como `auto`/¹); sem jornada definida, usa o último apontamento real do dia.
-- Correção na aba Jornada: card **"Registro de ponto"** lista os dias e permite corrigir entrada/saída ou registrar um dia esquecido; dias de afastamento médico não aceitam ponto.
+- Correção na aba Jornada: card **"Registro de ponto"** mostra o ponto do mês escolhido e permite corrigir entrada/saída, registrar um dia esquecido ou **gerar o ponto pelos apontamentos** (completa de uma vez os dias com atividades e sem ponto, usando o primeiro início e o último término reais; não altera dias já registrados). Dias de afastamento médico não aceitam ponto.
 
 ### Apontamentos
 - Ao propor uma atividade (título, data, início e duração estimada), o sistema preenche automaticamente a **previsão de início e término de cada etapa**, distribuindo a duração pelos pesos do modelo do professor.
 - Botões **Iniciar/Pausar/Retomar/Concluir** registram os horários reais de cada etapa; edição manual disponível. Pausar congela a contagem para trabalhar em outra atividade — o tempo pausado não conta como trabalho e é descontado de todas as horas e relatórios.
 - **Descansos**: almoço e/ou janta por dia — janela bloqueada: a previsão das etapas pula o intervalo, nenhum registro é aceito dentro dele, sem sobreposição, e as horas descontam o período.
-- **Saúde (separada dos descansos)**: **saída médica** (retorno opcional — sem retorno, contam as horas restantes da jornada) e **afastamento médico** (1 dia ou mais, dias inteiros bloqueados), ambos com **anexo do atestado** (PDF/JPG/PNG até 5 MB, guardado em data/atestados/ com nome aleatório e download autenticado). Indicador próprio no painel: o desconto considera **apenas as horas de jornada**, nunca o tempo total fora do expediente.
+- **Saúde (separada dos descansos)**: **saída médica** (retorno opcional — sem retorno, contam as horas restantes da jornada) e **afastamento médico** (1 dia ou mais, dias inteiros bloqueados), ambos com **anexo do atestado** (PDF/JPG/PNG até 5 MB, guardado em data/atestados/ com nome aleatório e download autenticado) — o atestado pode ser **anexado depois**, direto na etiqueta do registro no diário, já que só fica em mãos ao fim do atendimento (substituir apaga o arquivo anterior). Indicador próprio no painel: o desconto considera **apenas as horas de jornada**, nunca o tempo total fora do expediente.
 
 ### Diário
 - Filtros por professor (gestão/admin), período (hoje/semana/mês/tudo ou datas livres) e busca.
@@ -44,7 +44,7 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 ### Relatórios (com assinaturas)
 - **Simplificado**: uma linha por dia com início e término do trabalho apontado, descansos e horas trabalhadas líquidas. Se o dia tem registros reais, os horários exibidos são somente os reais; dias sem registro real usam a previsão, marcados com `*`.
 - **Detalhado**: todas as atividades e etapas do período, com previsão × real.
-- **Folha de ponto** (fechamento do RH): entrada e saída registradas pelo ponto, intervalos do dia e horas do ponto (entrada → saída, descontados descansos e saídas médicas); saídas automáticas marcadas com ¹; dias de afastamento em linha própria com o status do atestado.
+- **Folha de ponto** (fechamento do RH): entrada e saída registradas pelo ponto, intervalos do dia e horas do ponto (entrada → saída, descontados descansos e saídas médicas); saídas automáticas marcadas com ¹; dias de afastamento em linha própria com o status do atestado. Dias trabalhados **sem ponto registrado** (meses anteriores à adoção do ponto) aparecem com os horários deduzidos dos apontamentos, marcados com ² até o ponto ser gerado.
 - Seletor de **Mês** que preenche o período com o mês inteiro (vale para os três tipos), além das datas livres.
 - Todos saem com **campos de assinatura**: Maiberte Brogliato (Direção · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
 - Impressão em layout claro de documento; PDF gerado no navegador (jsPDF), com fallback para a impressão.

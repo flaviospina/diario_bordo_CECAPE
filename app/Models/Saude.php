@@ -74,6 +74,22 @@ final class Saude
         return (int)Database::pdo()->lastInsertId();
     }
 
+    /**
+     * Anexa (ou substitui) o atestado de um registro já existente — o
+     * atestado costuma chegar às mãos só depois do atendimento médico.
+     */
+    public static function setCertificate(array $leave, ?string $file, ?string $name): void
+    {
+        if (!empty($leave['certificate_file']) && $leave['certificate_file'] !== $file) {
+            $old = self::atestadoDir() . '/' . basename((string)$leave['certificate_file']);
+            if (is_file($old)) {
+                @unlink($old);
+            }
+        }
+        Database::pdo()->prepare('UPDATE medical_leaves SET certificate_file = :f, certificate_name = :n WHERE id = :id')
+            ->execute([':f' => $file, ':n' => $name, ':id' => (int)$leave['id']]);
+    }
+
     /** Remove o registro e o arquivo do atestado, se houver. */
     public static function delete(array $leave): void
     {
