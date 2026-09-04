@@ -130,7 +130,7 @@ $T = 'assets/tutorial';
           <img src="<?= $T ?>/tela-atestado.jpg" alt="Anexar atestado depois">
           <figcaption>A etiqueta da saída médica no Diário, com o botão de anexar o atestado a qualquer momento.</figcaption>
         </figure>
-        <div class="tut-tip">💡 Assim que o atestado é anexado, os relatórios passam a mostrar <b>"atestado entregue"</b> no lugar de "sem atestado" — sem precisar refazer o registro.</div>
+        <div class="tut-tip">💡 Assim que o atestado é anexado, os relatórios passam a mostrar <b>"atestado entregue"</b> no lugar de "sem atestado" — sem precisar refazer o registro. Se a prévia de um relatório estiver aberta, ela se atualiza sozinha.</div>
         <p>Descansos e saídas médicas são <b>janelas protegidas</b>:</p>
         <ul>
           <li>a previsão de novas atividades <b>pula</b> o período;</li>
@@ -214,6 +214,7 @@ $T = 'assets/tutorial';
           <li><b>Detalhado</b> — todas as atividades e etapas do período, com previsão × real e as pausas.</li>
           <li><b>Folha de ponto</b> — o modelo para o <b>fechamento do RH</b>: entrada e saída registradas pelos botões de jornada, os intervalos do dia e as horas do ponto (entrada → saída, descontados descansos e saídas médicas). Saídas automáticas aparecem com ¹.</li>
         </ul>
+        <p>A prévia gerada <b>se atualiza sozinha</b> quando você altera algo (anexa um atestado, corrige o ponto, edita uma etapa) — o que for impresso ou exportado em PDF sempre reflete os dados mais recentes.</p>
         <p>Todos saem com os <b>campos de assinatura</b> — <?= e(DIRECTOR_NAME) ?> (<?= e(DIRECTOR_ROLE) ?>) e o professor (nome + RM) — na tela, na impressão e no PDF.</p>
         <figure class="tut-img">
           <img src="<?= $T ?>/tela-rel-ponto.jpg" alt="Folha de ponto">

@@ -47,6 +47,7 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 - **Folha de ponto** (fechamento do RH): entrada e saída registradas pelo ponto, intervalos do dia e horas do ponto (entrada → saída, descontados descansos e saídas médicas); saídas automáticas marcadas com ¹; dias de afastamento em linha própria com o status do atestado. Dias trabalhados **sem ponto registrado** (meses anteriores à adoção do ponto) aparecem com os horários deduzidos dos apontamentos, marcados com ² até o ponto ser gerado.
 - Seletor de **Mês** que preenche o período com o mês inteiro (vale para os três tipos), além das datas livres.
 - Todos saem com **campos de assinatura**: Maiberte Brogliato (Direção · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
+- A prévia exibida se **atualiza automaticamente** a cada alteração (atestado anexado, ponto corrigido, etapa editada), de modo que impressão e PDF nunca saiam com dados antigos; havendo mais de um registro de saúde no mesmo dia, prevalece o que tem atestado anexado.
 - Impressão em layout claro de documento; PDF gerado no navegador (jsPDF), com fallback para a impressão.
 
 ## Banco de dados: MySQL ou SQLite

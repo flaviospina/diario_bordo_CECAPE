@@ -179,6 +179,9 @@ async function load() {
   STATE.ponto = data.ponto || [];
   renderStats();
   renderList();
+  // A prévia do relatório acompanha as alterações (atestado anexado, ponto
+  // corrigido, etapa editada) sem precisar clicar em "Gerar relatório".
+  await refreshReportIfShown();
 }
 
 /* ---------------- Saúde: janelas e horas sobre a jornada ---------------- */
@@ -194,6 +197,17 @@ function jornadaOf(day, jornada) {
   const wd = new Date(day + 'T12:00:00').getDay();
   const s = (jornada || []).find(x => Number(x.weekday) === wd && Number(x.enabled) === 1);
   return s ? { start: s.start_time.slice(0, 5), end: s.end_time.slice(0, 5) } : null;
+}
+
+/**
+ * Afastamento que cobre o dia. Havendo mais de um registro para o mesmo dia,
+ * prevalece o que tem atestado anexado — assim o relatório nunca informa
+ * "sem atestado" quando o documento já foi entregue.
+ */
+function afastOfDay(health, day) {
+  const cands = (health || []).filter(x =>
+    x.type === 'afastamento' && day >= x.date && day <= (x.end_date || x.date));
+  return cands.find(x => x.certificate_file) || cands[0] || null;
 }
 
 /** Dias (ISO) cobertos por um afastamento, limitados a um intervalo opcional. */
@@ -1344,7 +1358,7 @@ function simplifiedRows(data) {
   return days.map(day => {
     // Dia de afastamento médico: linha própria, sem horários de trabalho
     if (afastadoDias.includes(day)) {
-      const l = health.find(x => x.type === 'afastamento' && day >= x.date && day <= (x.end_date || x.date));
+      const l = afastOfDay(health, day);
       const periodo = l ? `${l.date.split('-').reverse().slice(0, 2).join('/')} a ${(l.end_date || l.date).split('-').reverse().slice(0, 2).join('/')}` : '';
       return {
         day, inicio: '—', fim: '—',
@@ -1449,7 +1463,7 @@ function buildDetailedHtml(data) {
   data.activities.forEach(a => { totalMin += realDuration(a, wins) || 0; });
   const body = days.map(day => {
     if (afastadoDias.includes(day)) {
-      const l = health.find(x => x.type === 'afastamento' && day >= x.date && day <= (x.end_date || x.date));
+      const l = afastOfDay(health, day);
       const periodo = l ? `${l.date.split('-').reverse().join('/')} a ${(l.end_date || l.date).split('-').reverse().join('/')}` : '';
       const cert = l && l.certificate_file;
       return `<div class="p-day"><h2>${fmtDay(day)} — 🏥 Afastamento médico ${cert ? '(atestado entregue)' : '(sem atestado)'}</h2>
@@ -1548,7 +1562,7 @@ function pontoReportRows(data) {
   ])].sort();
   return days.map(day => {
     if (afastadoDias.includes(day)) {
-      const l = health.find(x => x.type === 'afastamento' && day >= x.date && day <= (x.end_date || x.date));
+      const l = afastOfDay(health, day);
       const periodo = l ? `${l.date.split('-').reverse().slice(0, 2).join('/')} a ${(l.end_date || l.date).split('-').reverse().slice(0, 2).join('/')}` : '';
       return {
         day, entrada: '—', saida: '—',
@@ -1645,7 +1659,14 @@ function initMonthSelector() {
   ['#r-from', '#r-to'].forEach(s => $(s).addEventListener('change', () => { sel.value = ''; }));
 }
 
-async function gerarRelatorio() {
+/** Regera a prévia já exibida, para refletir alterações recentes. */
+async function refreshReportIfShown() {
+  if ($('#report-area .paper')) {
+    await gerarRelatorio(true);
+  }
+}
+
+async function gerarRelatorio(silent = false) {
   const profId = reportProfessorId();
   const from = $('#r-from').value, to = $('#r-to').value;
   const tipo = document.querySelector('input[name="r-type"]:checked')?.value || 'simplificado';
@@ -1667,8 +1688,8 @@ async function gerarRelatorio() {
       : (tipo === 'simplificado' ? buildSimplifiedHtml(data) : buildDetailedHtml(data));
     $('#btn-rel-print').disabled = false;
     $('#btn-rel-pdf').disabled = false;
-    toast('Relatório gerado — confira a prévia abaixo.');
-  } catch (e) { toast(e.message); }
+    if (!silent) toast('Relatório gerado — confira a prévia abaixo.');
+  } catch (e) { if (!silent) toast(e.message); }
 }
 
 function printReport() {
@@ -1864,7 +1885,7 @@ async function initPanel() {
   $('#r-from').value = isoDate(new Date(today.getFullYear(), today.getMonth(), 1));
   $('#r-to').value = isoDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
   initMonthSelector();
-  $('#btn-gerar').addEventListener('click', gerarRelatorio);
+  $('#btn-gerar').addEventListener('click', () => gerarRelatorio());
   $('#btn-rel-print').addEventListener('click', printReport);
   $('#btn-rel-pdf').addEventListener('click', exportReportPDF);
 
