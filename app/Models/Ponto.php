@@ -77,9 +77,12 @@ final class Ponto
 
     /**
      * Encerra automaticamente os pontos de dias anteriores esquecidos em
-     * aberto, usando o fim da jornada semanal do professor naquele dia.
-     * Sem jornada definida (ou entrada após o fim dela), usa o último
-     * término real apontado no dia — e, sem apontamentos, a própria entrada.
+     * aberto, no fim da jornada semanal do professor naquele dia. O ponto
+     * nunca fecha antes do último registro real do dia (início, término ou
+     * pausa de etapa): se o professor passou do horário, a saída fica no
+     * último registro e a administração corrige depois, se for o caso.
+     * Sem jornada definida, vale só o último registro (ou a própria entrada).
+     * As etapas ainda em andamento são pausadas no horário de encerramento.
      */
     public static function autoCloseOpen(int $userId): void
     {
@@ -89,23 +92,45 @@ final class Ponto
         foreach ($stmt->fetchAll() as $rec) {
             $date = (string)$rec['date'];
             $in = (string)$rec['clock_in'];
-            $out = null;
+            $out = $in;
             $sched = Jornada::forDay($userId, (int)date('w', (int)strtotime($date)));
-            if ($sched && (int)$sched['enabled'] === 1 && substr((string)$sched['end_time'], 0, 5) > $in) {
+            if ($sched && (int)$sched['enabled'] === 1 && substr((string)$sched['end_time'], 0, 5) > $out) {
                 $out = substr((string)$sched['end_time'], 0, 5);
-            } else {
-                $q = Database::pdo()->prepare(
-                    'SELECT MAX(p.real_end) FROM phases p
-                     JOIN activities a ON a.id = p.activity_id
-                     WHERE a.user_id = :u AND p.real_end LIKE :d'
-                );
-                $q->execute([':u' => $userId, ':d' => $date . '%']);
-                $lastEnd = (string)($q->fetchColumn() ?: '');
-                $out = ($lastEnd !== '' && substr($lastEnd, 11, 5) > $in) ? substr($lastEnd, 11, 5) : $in;
+            }
+            $last = self::lastRecordTime($userId, $date);
+            if ($last !== null && $last > $out) {
+                $out = $last;
             }
             self::close((int)$rec['id'], $out, 1);
-            // Etapas deixadas em andamento param de contar no fim da jornada
+            // Etapas deixadas em andamento param de contar no encerramento
             Phase::pauseOpenOfUser($userId, "$date $out");
         }
+    }
+
+    /** Último horário (HH:MM) apontado no dia: início/término de etapa ou pausa. */
+    private static function lastRecordTime(int $userId, string $date): ?string
+    {
+        $q = Database::pdo()->prepare(
+            'SELECT MAX(t) FROM (
+                SELECT p.real_start AS t FROM phases p JOIN activities a ON a.id = p.activity_id
+                 WHERE a.user_id = :u1 AND p.real_start LIKE :d1
+                UNION ALL
+                SELECT p.real_end FROM phases p JOIN activities a ON a.id = p.activity_id
+                 WHERE a.user_id = :u2 AND p.real_end LIKE :d2
+                UNION ALL
+                SELECT z.start_dt FROM phase_pauses z JOIN phases p ON p.id = z.phase_id
+                 JOIN activities a ON a.id = p.activity_id
+                 WHERE a.user_id = :u3 AND z.start_dt LIKE :d3
+                UNION ALL
+                SELECT z.end_dt FROM phase_pauses z JOIN phases p ON p.id = z.phase_id
+                 JOIN activities a ON a.id = p.activity_id
+                 WHERE a.user_id = :u4 AND z.end_dt LIKE :d4
+             ) x'
+        );
+        $like = $date . '%';
+        $q->execute([':u1' => $userId, ':d1' => $like, ':u2' => $userId, ':d2' => $like,
+                     ':u3' => $userId, ':d3' => $like, ':u4' => $userId, ':d4' => $like]);
+        $v = (string)($q->fetchColumn() ?: '');
+        return $v !== '' ? substr($v, 11, 5) : null;
     }
 }

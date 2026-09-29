@@ -313,14 +313,37 @@ final class ApiController extends Controller
 
     /* ---------------- Ponto (início/término da jornada) ---------------- */
 
-    /** Registros de ponto do próprio usuário (aba Jornada e barra do dia). */
+    /**
+     * Registros de ponto (aba Jornada e barra do dia). O administrador pode
+     * consultar e corrigir o ponto de qualquer professor via user_id.
+     */
     public function ponto(): void
     {
         $this->requireProfessorCapable();
-        $uid = (int)Session::userId();
+        $uid = $this->pontoTargetUser((int)($_GET['user_id'] ?? 0));
         Ponto::autoCloseOpen($uid);
         $from = $this->dateParam('from') ?: date('Y-m-d', strtotime('-45 days'));
         $this->json(['records' => Ponto::forUser($uid, $from, $this->dateParam('to'))]);
+    }
+
+    /**
+     * Professor cujo ponto será consultado/corrigido: o próprio usuário ou,
+     * para o administrador, qualquer conta que registra apontamentos.
+     */
+    private function pontoTargetUser(int $requested): int
+    {
+        $me = (int)Session::userId();
+        if ($requested <= 0 || $requested === $me) {
+            return $me;
+        }
+        if (!Session::isAdmin()) {
+            $this->json(['error' => 'Somente o administrador corrige o ponto de outros professores.'], 403);
+        }
+        $target = User::find($requested);
+        if (!$target || $target['role'] === 'gestor') {
+            $this->json(['error' => 'Professor não encontrado.'], 404);
+        }
+        return (int)$target['id'];
     }
 
     /** "Iniciar jornada": abre o ponto de hoje com a hora atual. */
@@ -373,7 +396,7 @@ final class ApiController extends Controller
         $this->requireProfessorCapable();
         $this->requireCsrf();
         $data = $this->body();
-        $uid = (int)Session::userId();
+        $uid = $this->pontoTargetUser((int)($data['user_id'] ?? 0));
         $date = (string)($data['date'] ?? '');
         $in = (string)($data['in'] ?? '');
         $out = trim((string)($data['out'] ?? ''));
@@ -420,7 +443,7 @@ final class ApiController extends Controller
         if (!$this->isValidDate($from) || !$this->isValidDate($to) || $to < $from) {
             $this->json(['error' => 'Informe um período válido para gerar o ponto.'], 422);
         }
-        $uid = (int)Session::userId();
+        $uid = $this->pontoTargetUser((int)($data['user_id'] ?? 0));
 
         // Dias de afastamento não recebem ponto
         $afastados = [];
@@ -476,7 +499,8 @@ final class ApiController extends Controller
         $this->requireCsrf();
         $id = (int)($this->body()['id'] ?? 0);
         $rec = $id > 0 ? Ponto::find($id) : null;
-        if (!$rec || (int)$rec['user_id'] !== (int)Session::userId()) {
+        // Dono do registro ou administrador (que corrige o ponto da equipe)
+        if (!$rec || ((int)$rec['user_id'] !== (int)Session::userId() && !Session::isAdmin())) {
             $this->json(['error' => 'Registro de ponto não encontrado.'], 404);
         }
         Ponto::delete($id);

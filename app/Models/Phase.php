@@ -102,7 +102,9 @@ final class Phase
         $stmt->execute([':u' => $userId]);
         $n = 0;
         foreach ($stmt->fetchAll() as $p) {
-            if ((string)$p['real_start'] >= $datetime || self::openPause((int)$p['id'])) {
+            // Etapa iniciada depois do horário fica como está; iniciada no
+            // mesmo minuto é pausada (para de contar imediatamente)
+            if ((string)$p['real_start'] > $datetime || self::openPause((int)$p['id'])) {
                 continue;
             }
             self::addPause((int)$p['id'], $datetime);

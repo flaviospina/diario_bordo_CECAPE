@@ -228,7 +228,14 @@ $admin = $role === 'admin';
 
         <div class="panel-card">
           <div class="panel-title">⏱ Registro de ponto (folha do RH)</div>
-          <p class="hint">A entrada e a saída de cada dia são registradas pelos botões <b>Iniciar jornada</b> e <b>Encerrar jornada</b> no topo do painel. Esqueceu de encerrar? O sistema fecha o ponto automaticamente no fim da sua jornada prevista. Use o formulário abaixo para registrar ou corrigir o ponto de um dia.</p>
+          <p class="hint">A entrada e a saída de cada dia são registradas pelos botões <b>Iniciar jornada</b> e <b>Encerrar jornada</b> no topo do painel. Esqueceu de encerrar? O sistema fecha o ponto automaticamente no fim da jornada prevista (nunca antes do último registro do dia) e pausa as etapas em andamento. Use o formulário abaixo para registrar ou corrigir o ponto de um dia<?= $admin ? ' — como administrador, você pode escolher o professor e corrigir a entrada e a saída dele' : '' ?>.</p>
+          <?php if ($admin): ?>
+          <div class="ponto-tools ponto-tools-top">
+            <label class="jr-lbl" for="pt-prof">Professor(a)</label>
+            <select id="pt-prof" class="form-control form-sm form-select"></select>
+            <span class="hint" id="pt-prof-hint"></span>
+          </div>
+          <?php endif; ?>
           <form id="ponto-form" class="form-grid">
             <div class="form-group col-4">
               <label class="form-label" for="pt-date">Data <span class="req">*</span></label>

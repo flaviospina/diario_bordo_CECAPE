@@ -764,6 +764,9 @@ a.link:hover { text-decoration: underline; }
   margin: 14px 0 4px;
 }
 .ponto-tools select { max-width: 190px; }
+.ponto-tools-top { margin: 0 0 14px; }
+.ponto-tools-top select { max-width: 320px; }
+.ponto-tools-top .hint { margin: 0; font-size: 12px; }
 
 .atestado-add {
   background: rgba(34,211,238,.12);

@@ -70,7 +70,7 @@ $T = 'assets/tutorial';
           <li><b>Tudo fica bloqueado sem o ponto</b> — o sistema recusa propor atividades e usar os botões das etapas (Iniciar/Pausar/Concluir/Editar) enquanto a jornada do dia não for iniciada, e também depois de encerrada.</li>
           <li><b>Iniciar jornada</b> grava a entrada com a hora atual; a barra fica verde enquanto a jornada está aberta.</li>
           <li><b>Encerrar jornada</b> grava a saída e fecha o ponto do dia — depois disso, novos registros de trabalho do dia são recusados. <b>Etapas ainda em andamento entram em pausa automaticamente</b> nesse horário: o tempo até você clicar em <b>Retomar</b> no dia seguinte não conta como trabalho.</li>
-          <li><b>Esqueceu de encerrar?</b> O sistema fecha o ponto automaticamente no <b>fim da jornada prevista</b> que você cadastrou na aba Jornada (o registro fica marcado como <i>auto</i> e com ¹ na folha de ponto) — e pausa as etapas em andamento nesse mesmo horário.</li>
+          <li><b>Esqueceu de encerrar?</b> O sistema fecha o ponto automaticamente no <b>fim da jornada prevista</b> que você cadastrou na aba Jornada — e <b>nunca antes do último registro do dia</b>: se você passou do horário, a saída fica no último início, término ou pausa apontado, para a administração conferir e corrigir. O registro fica marcado como <i>auto</i> (¹ na folha de ponto) e as etapas em andamento são pausadas nesse mesmo horário.</li>
           <li><b>Dia de afastamento médico</b> não aceita ponto — o dia inteiro fica bloqueado.</li>
         </ul>
         <h3>Corrigir, completar ou registrar um dia esquecido</h3>
@@ -85,6 +85,9 @@ $T = 'assets/tutorial';
           <figcaption>O card de registro de ponto: seletor de mês, botão de gerar pelos apontamentos e a lista dos dias (a etiqueta <i>auto</i> indica encerramento automático).</figcaption>
         </figure>
         <div class="tut-tip">💡 Na folha de ponto, um dia trabalhado que ainda não tem ponto registrado aparece com os horários deduzidos dos apontamentos e o marcador <b>²</b> — gere o ponto do mês para oficializar esses horários.</div>
+        <?php if ($admin): ?>
+        <div class="tut-tip">👤 <b>Administrador:</b> no card de registro de ponto há o seletor <b>Professor(a)</b>. Escolha a pessoa e a lista, o formulário (Corrigir / Salvar ponto), o Excluir e o "Gerar ponto pelos apontamentos" passam a agir sobre o ponto <b>dela</b> — é assim que você corrige a entrada e a saída de quem estourou o horário ou esqueceu de encerrar. A barra do topo continua mostrando a <b>sua</b> jornada.</div>
+        <?php endif; ?>
         <div class="tut-tip">💡 No Diário, cada dia mostra a etiqueta <b>⏱ Ponto</b> com a entrada e a saída registradas — fácil de conferir com a jornada prevista ao lado.</div>
       </section>
 

@@ -857,22 +857,44 @@ function pontoMonthRange() {
   return { from: isoDate(new Date(y, m - 1, 1)), to: isoDate(new Date(y, m, 0)) };
 }
 
+/** Professor cujo ponto o card mostra/corrige (admin escolhe; demais, o próprio). */
+function pontoTargetId() {
+  const sel = $('#pt-prof');
+  return sel && sel.value ? parseInt(sel.value, 10) : STATE.userId;
+}
+
+function pontoTargetName() {
+  const sel = $('#pt-prof');
+  return sel?.selectedOptions[0]?.textContent.split(' · ')[0] || STATE.userName;
+}
+
+function pontoIsOwn() { return pontoTargetId() === STATE.userId; }
+
 async function refreshPonto() {
   const range = pontoMonthRange();
+  const target = pontoTargetId();
   const qs = new URLSearchParams();
   if (range) { qs.set('from', range.from); qs.set('to', range.to); }
+  if (!pontoIsOwn()) qs.set('user_id', String(target));
   try {
     STATE.myPonto = (await api('ponto', { qs: qs.toString() })).records || [];
-  } catch { STATE.myPonto = []; }
-  // A barra do dia precisa do registro de hoje mesmo olhando outro mês
+  } catch (e) { STATE.myPonto = []; toast(e.message); }
+  // A barra do dia é sempre a do PRÓPRIO usuário — mesmo quando o
+  // administrador está olhando o ponto de outro professor ou outro mês
   const today = isoDate(new Date());
-  if (!STATE.myPonto.some(r => r.date === today)) {
+  if (pontoIsOwn() && STATE.myPonto.some(r => r.date === today)) {
+    STATE.todayPonto = STATE.myPonto.find(r => r.date === today);
+  } else {
     try {
       const hoje = (await api('ponto', { qs: `from=${today}&to=${today}` })).records || [];
       STATE.todayPonto = hoje[0] || null;
     } catch { STATE.todayPonto = null; }
-  } else {
-    STATE.todayPonto = STATE.myPonto.find(r => r.date === today);
+  }
+  const hint = $('#pt-prof-hint');
+  if (hint) {
+    hint.textContent = pontoIsOwn()
+      ? 'Seu próprio ponto.'
+      : `Corrigindo o ponto de ${pontoTargetName()} — a lista, o formulário e a geração abaixo agem sobre essa conta.`;
   }
   renderPontoBar();
   renderPontoTable();
@@ -883,13 +905,16 @@ async function fillPonto() {
   const range = pontoMonthRange();
   if (!range) return toast('Escolha o mês que deseja completar.');
   const label = $('#pt-month').selectedOptions[0]?.textContent || '';
-  if (!confirm(`Gerar o ponto de ${label} a partir das atividades apontadas?\n\n`
+  const quem = pontoIsOwn() ? '' : ` de ${pontoTargetName()}`;
+  if (!confirm(`Gerar o ponto${quem} de ${label} a partir das atividades apontadas?\n\n`
     + 'Cada dia com apontamentos e sem ponto recebe a entrada do primeiro início real e a saída do último término real. '
     + 'Dias que já têm ponto registrado não são alterados.')) return;
   try {
-    const r = await api('ponto-fill', { body: range });
+    const body = { ...range };
+    if (!pontoIsOwn()) body.user_id = pontoTargetId();
+    const r = await api('ponto-fill', { body });
     toast(r.created
-      ? `${r.created} dia${r.created !== 1 ? 's' : ''} de ponto gerado${r.created !== 1 ? 's' : ''} — confira e ajuste na lista abaixo.`
+      ? `${r.created} dia${r.created !== 1 ? 's' : ''} de ponto gerado${r.created !== 1 ? 's' : ''}${quem} — confira e ajuste na lista abaixo.`
       : 'Nenhum dia a completar: todos os dias com apontamentos já têm ponto registrado.');
     await refreshPonto();
     await load();
@@ -921,7 +946,7 @@ function renderPontoTable() {
   const tbody = $('#ponto-table tbody');
   if (!tbody) return;
   if (!STATE.myPonto.length) {
-    tbody.innerHTML = '<tr><td colspan="4" class="hb-empty">Nenhum registro de ponto neste mês — use "Iniciar jornada" no topo do painel, o formulário acima ou "Gerar ponto pelos apontamentos".</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="4" class="hb-empty">Nenhum registro de ponto${pontoIsOwn() ? '' : ' de ' + esc(pontoTargetName())} neste mês — use ${pontoIsOwn() ? '"Iniciar jornada" no topo do painel, ' : ''}o formulário acima ou "Gerar ponto pelos apontamentos".</td></tr>`;
     return;
   }
   tbody.innerHTML = STATE.myPonto.slice(0, 62).map(r => `
@@ -943,7 +968,7 @@ function renderPontoTable() {
     $('#pt-date').value = r.date;
     $('#pt-in').value = r.clock_in;
     $('#pt-out').value = r.clock_out || '';
-    toast('Ajuste os horários no formulário acima e clique em "Salvar ponto".');
+    toast(`Ajuste os horários${pontoIsOwn() ? '' : ' de ' + pontoTargetName()} no formulário acima e clique em "Salvar ponto".`);
     $('#pt-in').focus();
   }));
   $$('#ponto-table [data-ponto-del]').forEach(btn => btn.addEventListener('click', async () => {
@@ -962,8 +987,11 @@ async function submitPonto(ev) {
   const date = $('#pt-date').value, entrada = $('#pt-in').value, saida = $('#pt-out').value;
   if (!date || !entrada) return toast('Informe a data e o horário de entrada.');
   try {
-    const r = await api('ponto-set', { body: { date, in: entrada, out: saida } });
-    toast(r.paused ? `Ponto salvo — ${r.paused} etapa${r.paused !== 1 ? 's' : ''} em andamento pausada${r.paused !== 1 ? 's' : ''} na saída.` : 'Ponto salvo.');
+    const body = { date, in: entrada, out: saida };
+    if (!pontoIsOwn()) body.user_id = pontoTargetId();
+    const r = await api('ponto-set', { body });
+    const quem = pontoIsOwn() ? '' : ` de ${pontoTargetName()}`;
+    toast(r.paused ? `Ponto${quem} salvo — ${r.paused} etapa${r.paused !== 1 ? 's' : ''} em andamento pausada${r.paused !== 1 ? 's' : ''} na saída.` : `Ponto${quem} salvo.`);
     $('#pt-out').value = '';
     await refreshPonto();
     await load();
@@ -1306,6 +1334,14 @@ async function loadProfessors() {
   if (rSel) {
     rSel.innerHTML = options;
     rSel.value = String(STATE.profId || STATE.professors[0]?.id || '');
+  }
+  // Card de ponto (admin): escolhe de quem corrigir; começa no próprio
+  const pSel = $('#pt-prof');
+  if (pSel && !pSel.options.length) {
+    pSel.innerHTML = options;
+    pSel.value = String(STATE.userId);
+    pSel.addEventListener('change', refreshPonto);
+    await refreshPonto();
   }
 }
 
