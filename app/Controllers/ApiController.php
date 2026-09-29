@@ -361,7 +361,10 @@ final class ApiController extends Controller
             $this->json(['error' => 'Aguarde ao menos um minuto após o início para encerrar a jornada.'], 422);
         }
         Ponto::close((int)$rec['id'], $now);
-        $this->json(['ok' => true]);
+        // Etapas ainda em andamento entram em pausa no encerramento: o tempo
+        // fora do expediente (até o próximo "Retomar") não conta como trabalho
+        $paused = Phase::pauseOpenOfUser($uid, date('Y-m-d') . ' ' . $now);
+        $this->json(['ok' => true, 'paused' => $paused]);
     }
 
     /** Registra ou corrige o ponto de um dia (entrada/saída manuais). */
@@ -391,10 +394,13 @@ final class ApiController extends Controller
         $rec = Ponto::forDay($uid, $date);
         if ($rec) {
             Ponto::setTimes((int)$rec['id'], $in, $out === '' ? null : $out);
-            $this->json(['ok' => true, 'id' => (int)$rec['id']]);
+            $id = (int)$rec['id'];
+        } else {
+            $id = Ponto::create($uid, $date, $in, $out === '' ? null : $out);
         }
-        $id = Ponto::create($uid, $date, $in, $out === '' ? null : $out);
-        $this->json(['ok' => true, 'id' => $id]);
+        // Saída informada: etapas em andamento até esse horário ficam pausadas
+        $paused = $out !== '' ? Phase::pauseOpenOfUser($uid, "$date $out") : 0;
+        $this->json(['ok' => true, 'id' => $id, 'paused' => $paused]);
     }
 
     /**

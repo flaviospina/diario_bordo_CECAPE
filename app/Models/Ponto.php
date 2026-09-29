@@ -84,7 +84,7 @@ final class Ponto
     public static function autoCloseOpen(int $userId): void
     {
         $today = date('Y-m-d');
-        $stmt = Database::pdo()->prepare('SELECT * FROM time_clock WHERE user_id = :u AND clock_out IS NULL AND date < :d');
+        $stmt = Database::pdo()->prepare('SELECT * FROM time_clock WHERE user_id = :u AND clock_out IS NULL AND date < :d ORDER BY date');
         $stmt->execute([':u' => $userId, ':d' => $today]);
         foreach ($stmt->fetchAll() as $rec) {
             $date = (string)$rec['date'];
@@ -104,6 +104,8 @@ final class Ponto
                 $out = ($lastEnd !== '' && substr($lastEnd, 11, 5) > $in) ? substr($lastEnd, 11, 5) : $in;
             }
             self::close((int)$rec['id'], $out, 1);
+            // Etapas deixadas em andamento param de contar no fim da jornada
+            Phase::pauseOpenOfUser($userId, "$date $out");
         }
     }
 }

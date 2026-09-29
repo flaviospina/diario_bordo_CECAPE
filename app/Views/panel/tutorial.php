@@ -69,8 +69,8 @@ $T = 'assets/tutorial';
         <ul>
           <li><b>Tudo fica bloqueado sem o ponto</b> — o sistema recusa propor atividades e usar os botões das etapas (Iniciar/Pausar/Concluir/Editar) enquanto a jornada do dia não for iniciada, e também depois de encerrada.</li>
           <li><b>Iniciar jornada</b> grava a entrada com a hora atual; a barra fica verde enquanto a jornada está aberta.</li>
-          <li><b>Encerrar jornada</b> grava a saída e fecha o ponto do dia — depois disso, novos registros de trabalho do dia são recusados.</li>
-          <li><b>Esqueceu de encerrar?</b> O sistema fecha o ponto automaticamente no <b>fim da jornada prevista</b> que você cadastrou na aba Jornada (o registro fica marcado como <i>auto</i> e com ¹ na folha de ponto).</li>
+          <li><b>Encerrar jornada</b> grava a saída e fecha o ponto do dia — depois disso, novos registros de trabalho do dia são recusados. <b>Etapas ainda em andamento entram em pausa automaticamente</b> nesse horário: o tempo até você clicar em <b>Retomar</b> no dia seguinte não conta como trabalho.</li>
+          <li><b>Esqueceu de encerrar?</b> O sistema fecha o ponto automaticamente no <b>fim da jornada prevista</b> que você cadastrou na aba Jornada (o registro fica marcado como <i>auto</i> e com ¹ na folha de ponto) — e pausa as etapas em andamento nesse mesmo horário.</li>
           <li><b>Dia de afastamento médico</b> não aceita ponto — o dia inteiro fica bloqueado.</li>
         </ul>
         <h3>Corrigir, completar ou registrar um dia esquecido</h3>

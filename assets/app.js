@@ -906,10 +906,12 @@ async function clockIn() {
 }
 
 async function clockOut() {
-  if (!confirm('Encerrar a jornada de agora? Depois de encerrada, novos registros de trabalho do dia ficam bloqueados.')) return;
+  if (!confirm('Encerrar a jornada de agora?\n\nAs etapas ainda em andamento entram em pausa automaticamente (o tempo até você retomar não conta como trabalho) e novos registros do dia ficam bloqueados.')) return;
   try {
-    await api('ponto-out', { body: {} });
-    toast('Jornada encerrada — ponto do dia fechado.');
+    const r = await api('ponto-out', { body: {} });
+    toast(r.paused
+      ? `Jornada encerrada — ${r.paused} etapa${r.paused !== 1 ? 's' : ''} em andamento pausada${r.paused !== 1 ? 's' : ''} automaticamente. Amanhã, use "Retomar" para continuar.`
+      : 'Jornada encerrada — ponto do dia fechado.');
     await refreshPonto();
     await load();
   } catch (e) { toast(e.message); }
@@ -960,8 +962,8 @@ async function submitPonto(ev) {
   const date = $('#pt-date').value, entrada = $('#pt-in').value, saida = $('#pt-out').value;
   if (!date || !entrada) return toast('Informe a data e o horário de entrada.');
   try {
-    await api('ponto-set', { body: { date, in: entrada, out: saida } });
-    toast('Ponto salvo.');
+    const r = await api('ponto-set', { body: { date, in: entrada, out: saida } });
+    toast(r.paused ? `Ponto salvo — ${r.paused} etapa${r.paused !== 1 ? 's' : ''} em andamento pausada${r.paused !== 1 ? 's' : ''} na saída.` : 'Ponto salvo.');
     $('#pt-out').value = '';
     await refreshPonto();
     await load();

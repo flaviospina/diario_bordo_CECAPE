@@ -20,6 +20,7 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 - Botões **▶ Iniciar jornada / ⏹ Encerrar jornada** na barra do topo registram a entrada e a saída do dia — é o registro usado no fechamento da folha do RH.
 - **Bloqueio total sem o ponto**: propor atividades e operar etapas (iniciar/pausar/retomar/concluir/editar) só com a jornada do dia iniciada; horários antes da entrada ou depois da saída registrada são recusados.
 - **Encerramento automático**: ponto esquecido em aberto é fechado no **fim da jornada semanal prevista** do professor (marcado como `auto`/¹); sem jornada definida, usa o último apontamento real do dia.
+- **Pausa automática ao encerrar**: ao encerrar a jornada (botão, encerramento automático ou correção da saída), toda etapa ainda em andamento entra em pausa nesse horário — o tempo até o próximo "Retomar" nunca conta como trabalho.
 - Correção na aba Jornada: card **"Registro de ponto"** mostra o ponto do mês escolhido e permite corrigir entrada/saída, registrar um dia esquecido ou **gerar o ponto pelos apontamentos** (completa de uma vez os dias com atividades e sem ponto, usando o primeiro início e o último término reais; não altera dias já registrados). Dias de afastamento médico não aceitam ponto.
 
 ### Apontamentos

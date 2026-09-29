@@ -83,6 +83,34 @@ final class Phase
         }
     }
 
+    /**
+     * Pausa, no horário informado, todas as etapas em andamento do usuário —
+     * usado ao encerrar a jornada (pelo botão, pelo encerramento automático
+     * ou pela correção do ponto), para que o tempo fora do expediente nunca
+     * conte como trabalho. Etapas já pausadas ou iniciadas depois do horário
+     * ficam como estão. Devolve quantas etapas foram pausadas.
+     */
+    public static function pauseOpenOfUser(int $userId, string $datetime): int
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT p.id, p.real_start FROM phases p
+             JOIN activities a ON a.id = p.activity_id
+             WHERE a.user_id = :u
+               AND p.real_start IS NOT NULL AND p.real_start != \'\'
+               AND (p.real_end IS NULL OR p.real_end = \'\')'
+        );
+        $stmt->execute([':u' => $userId]);
+        $n = 0;
+        foreach ($stmt->fetchAll() as $p) {
+            if ((string)$p['real_start'] >= $datetime || self::openPause((int)$p['id'])) {
+                continue;
+            }
+            self::addPause((int)$p['id'], $datetime);
+            $n++;
+        }
+        return $n;
+    }
+
     /** Atualiza os horários reais (null limpa o campo). */
     public static function setTimes(int $id, array $fields): void
     {
