@@ -100,3 +100,13 @@ Tabelas: `users` (perfil, RM, etapas em JSON, direção responsável, hash de se
 5. Informe Maiberte (`maiberte`) e Therezinha (`therezinha`) — senha inicial **cecape2026**, a trocar no primeiro acesso.
 
 Para testar localmente: `php -S localhost:8000` e abra `http://localhost:8000/index.php`.
+
+## Esqueceu a senha do administrador?
+
+Sem terminal, use o script de uso único `tools/reset-senha.php` (já vai no ZIP do sistema):
+
+1. No Gerenciador de Arquivos, dentro da pasta `data/` do sistema, crie um arquivo vazio chamado **`liberar-reset.txt`** — é a prova de que quem redefine tem acesso ao servidor; sem ele o script não faz nada.
+2. Abra `https://cecapescs.com.br/diariobordo/tools/reset-senha.php`.
+3. O script grava a senha provisória **123456** na conta `flavio` (edite as constantes no topo do arquivo para outra conta/senha), reativa a conta, limpa o bloqueio por tentativas, mostra um diagnóstico e apaga o marcador e a si mesmo. Entre e troque a senha no painel.
+
+Para outros usuários, o administrador redefine a senha pela tela: **Contas → Editar → Senha inicial**.
