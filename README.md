@@ -61,6 +61,8 @@ A aplicação usa PDO e funciona com **dois bancos**, escolhidos pela configura�
 
 **Migração automática SQLite → MySQL**: na primeira conexão com o banco MySQL vazio, os dados de uma instalação SQLite existente em `data/` são importados automaticamente (contas, atividades, etapas, pausas e descansos, preservando os IDs); o arquivo `.sqlite` é renomeado para `.importado-<data>` e permanece como backup.
 
+**O sistema voltou a gravar no SQLite?** (acontece se `config.local.php` sumir ou ficar incompleto — o rodapé do administrador mostra "Banco: SQLite" e as edições no phpMyAdmin não surtem efeito.) Use `tools/migrar-mysql.php`, sem terminal: confira o `config.local.php`, crie um arquivo vazio `data/liberar-migracao.txt` no Gerenciador de Arquivos e abra `https://cecapescs.com.br/diariobordo/tools/migrar-mysql.php`. A página mostra o diagnóstico (SQLite × MySQL: contagens e data do último registro de cada tabela) e só altera algo quando você clica: **Migrar** (MySQL vazio) ou **Substituir** (MySQL com dados antigos → é esvaziado e recebe os dados do SQLite, que é renomeado como backup). Ao terminar, o marcador e o script se apagam.
+
 ## Arquitetura (MVC)
 
 PHP 8+ com PDO (MySQL ou SQLite), front controller único:
