@@ -16,7 +16,7 @@ let STATE = {
   activities: [], breaks: [], formBreaks: [], jornada: [], health: [],
   ponto: [], myPonto: [], todayPonto: null,
   schedule: [], hourBank: [], hourBankTotal: 0,
-  phasesTemplate: [], reportData: null, reportType: 'simplificado'
+  phasesTemplate: [], reportData: null, reportType: 'simplificado', reportEdit: false
 };
 
 const STATUS_LABEL = { prevista: 'Prevista', em_andamento: 'Em andamento', pausada: 'Pausada', concluida: 'Concluída' };
@@ -113,6 +113,11 @@ async function api(action, opts = {}) {
 
 function canEdit() {
   return STATE.role !== 'gestor' && STATE.profId === STATE.userId;
+}
+
+/** Pode corrigir horários (Editar/Refazer/excluir pausa): o dono ou o administrador. */
+function canCorrect() {
+  return STATE.role === 'admin' || canEdit();
 }
 
 /* ---------------- Abas ---------------- */
@@ -347,7 +352,7 @@ function renderStats() {
     <div class="kpi-card kpi-purple"><div class="kpi-value">${days}</div><div class="kpi-label">Dias de trabalho</div></div>`;
 }
 
-function phaseRowHtml(p, editable) {
+function phaseRowHtml(p, editable, correctable = editable) {
   const started = !!p.real_start, done = !!p.real_end;
   const paused = !done && isPaused(p);
   const cls = done ? 'done' : (paused ? 'paused' : (started ? 'started' : ''));
@@ -356,6 +361,7 @@ function phaseRowHtml(p, editable) {
     ? pauseOverlapMin(p.real_start, p.real_end, p.pauses)
     : pauseMinutes(p.pauses);
   let actions = '';
+  // Botões de "agora" só para o próprio professor; correções também para o admin
   if (editable) {
     if (!started && !done) {
       actions = `<button class="btn-sm btn-info" data-phase="${p.id}" data-op="start">Iniciar</button>`;
@@ -365,14 +371,17 @@ function phaseRowHtml(p, editable) {
     } else if (!done) {
       actions = `<button class="btn-sm btn-warn" data-phase="${p.id}" data-op="pause">Pausar</button>
                  <button class="btn-sm btn-ok" data-phase="${p.id}" data-op="finish">Concluir</button>`;
-    } else {
-      actions = `<button class="btn-sm btn-muted" data-phase="${p.id}" data-op="undo" title="Limpar horários reais e pausas">Refazer</button>`;
+    }
+  }
+  if (correctable) {
+    if (done || !editable) {
+      actions += `<button class="btn-sm btn-muted" data-phase="${p.id}" data-op="undo" title="Limpar horários reais e pausas">Refazer</button>`;
     }
     actions += `<button class="btn-sm btn-muted" data-phase="${p.id}" data-op="edit" title="Editar horários manualmente">Editar</button>`;
   }
   const baseDay = (p.real_start || '').slice(0, 10);
   const pauseItems = (p.pauses || []).map(pz =>
-    `<span class="pause-item">${fmtTimeRel(pz.start_dt, baseDay)}→${pz.end_dt ? fmtTimeRel(pz.end_dt, baseDay) : 'em pausa'}${editable ? `<button class="pause-del" data-pause="${pz.id}" title="Excluir esta pausa (registrada por engano)">✕</button>` : ''}</span>`
+    `<span class="pause-item">${fmtTimeRel(pz.start_dt, baseDay)}→${pz.end_dt ? fmtTimeRel(pz.end_dt, baseDay) : 'em pausa'}${correctable ? `<button class="pause-del" data-pause="${pz.id}" title="Excluir esta pausa (registrada por engano)">✕</button>` : ''}</span>`
   ).join(' ');
   const pauseInfo = (pausedMin || paused)
     ? `<span class="pause-info">⏸ ${paused ? 'em pausa' : ''}${paused && pausedMin ? ' · ' : ''}${pausedMin ? 'pausas ' + fmtDuration(pausedMin) : ''} ${pauseItems}</span>`
@@ -387,7 +396,7 @@ function phaseRowHtml(p, editable) {
     </div>`;
 }
 
-function activityCard(a, editable) {
+function activityCard(a, editable, correctable = editable) {
   const wins = blockWindows(STATE.breaks, STATE.health);
   const dur = realDuration(a, wins);
   const prevDur = realNetMinutes(a.prev_start, a.prev_end, wins);
@@ -404,12 +413,12 @@ function activityCard(a, editable) {
         </div>
         ${a.description ? `<p class="activity-desc">${esc(a.description)}</p>` : ''}
       </div>
-      ${editable ? `<div class="activity-actions">
+      ${correctable ? `<div class="activity-actions">
         <button class="btn-sm btn-info" data-act="${a.id}" data-op="edit-activity">Editar</button>
         <button class="btn-sm btn-danger" data-act="${a.id}" data-op="delete">Excluir</button>
       </div>` : ''}
     </div>
-    <div class="phases">${a.phases.map(p => phaseRowHtml(p, editable)).join('')}</div>
+    <div class="phases">${a.phases.map(p => phaseRowHtml(p, editable, correctable)).join('')}</div>
   </article>`;
 }
 
@@ -454,6 +463,7 @@ function jornadaChip(day) {
 
 function renderList() {
   const editable = canEdit();
+  const correctable = canCorrect();
   const wrap = $('#list');
   const acts = STATE.activities;
   const { from, to } = currentFilters();
@@ -481,11 +491,11 @@ function renderList() {
         ${dayBreaks.map(b => breakChip(b, editable)).join('')}
         ${dayHealth.map(l => healthChip(l, day, editable)).join('')}
       </div>
-      ${list.map(a => activityCard(a, editable)).join('') || ''}
+      ${list.map(a => activityCard(a, editable, correctable)).join('') || ''}
     </section>`;
   }).join('');
 
-  if (editable) bindListEvents();
+  if (editable || correctable) bindListEvents();
 }
 
 /* ---------------- Ações no diário (dono) ---------------- */
@@ -1496,7 +1506,7 @@ function buildSimplifiedHtml(data) {
           <td>${r.fim}${r.marcador}</td>
           <td>${esc(r.descanso)}</td>
           <td>${r.liquido != null ? fmtDuration(r.liquido) : '—'}</td>
-        </tr>`).join('')}
+        </tr>${dayEditorRow(r.day, data, 5)}`).join('')}
       </tbody>
       <tfoot><tr><td colspan="4"><b>Total (${rows.length} dia${rows.length !== 1 ? 's' : ''})</b></td><td><b>${fmtDuration(totalMin)}</b></td></tr></tfoot>
     </table>
@@ -1555,6 +1565,7 @@ function buildDetailedHtml(data) {
             </tr>`; }).join('')}</tbody>
           </table>
         </div>`).join('') || '<p class="p-desc">Sem atividades de trabalho registradas neste dia.</p>'}
+      ${dayEditorHtml(day, data)}
     </div>`;
   }).join('');
   return `
@@ -1672,7 +1683,7 @@ function buildPontoHtml(data) {
           <td>${esc(r.saida)}${r.auto ? ' ¹' : ''}${r.estimado ? ' ²' : ''}</td>
           <td>${esc(r.intervalos)}</td>
           <td>${r.min != null ? fmtDuration(r.min) : '—'}</td>
-        </tr>`).join('')}
+        </tr>${dayEditorRow(r.day, data, 5)}`).join('')}
       </tbody>
       <tfoot><tr><td colspan="4"><b>Total (${rows.length} dia${rows.length !== 1 ? 's' : ''})</b></td><td><b>${fmtDuration(totalMin)}</b></td></tr></tfoot>
     </table>
@@ -1723,6 +1734,108 @@ async function refreshReportIfShown() {
   }
 }
 
+/* ---------------- Correção de horários no relatório ---------------- */
+
+/** Pode corrigir os horários do relatório exibido: admin (qualquer professor) ou o próprio professor. */
+function canCorrectReport() {
+  if (STATE.role === 'gestor') return false;
+  return STATE.role === 'admin' || reportProfessorId() === STATE.userId;
+}
+
+/**
+ * Editor de um dia do relatório: entrada/saída do ponto e, para cada etapa
+ * do dia, início/término reais e as pausas (com exclusão). Fora da impressão.
+ */
+function dayEditorHtml(day, data) {
+  if (!STATE.reportEdit || afastOfDay(data.health, day)) return '';
+  const acts = data.activities.filter(a => a.date === day);
+  const rec = (data.ponto || []).find(r => r.date === day) || pontoEstimate(acts, day);
+  const toLocal = dt => dt ? dt.replace(' ', 'T').slice(0, 16) : '';
+  let html = `
+    <div class="rep-edit no-print" data-day="${day}">
+      <div class="rep-edit-row">
+        <span class="rep-edit-lbl">⏱ Ponto do dia</span>
+        <label>Entrada <input type="time" class="form-control form-sm" data-rep-in value="${esc(rec?.clock_in || '')}"></label>
+        <label>Saída <input type="time" class="form-control form-sm" data-rep-out value="${esc(rec?.clock_out || '')}"></label>
+        <button class="btn-sm btn-info" data-rep-ponto-save="${day}">${rec && !rec.estimado ? 'Salvar ponto' : 'Registrar ponto'}</button>
+        ${rec && !rec.estimado ? '' : '<small class="rep-edit-note">sem ponto registrado — horários sugeridos pelos apontamentos</small>'}
+      </div>`;
+  acts.forEach(a => a.phases.forEach(p => {
+    const pausas = (p.pauses || []).map(z =>
+      `<span class="pause-item">⏸ ${fmtTimeRel(z.start_dt, day)}→${z.end_dt ? fmtTimeRel(z.end_dt, day) : 'em pausa'}<button class="pause-del" data-rep-pause-del="${z.id}" title="Excluir esta pausa">✕</button></span>`).join(' ');
+    html += `
+      <div class="rep-edit-row">
+        <span class="rep-edit-lbl">${esc(a.title)} › <b>${esc(p.name)}</b></span>
+        <label>Início real <input type="datetime-local" class="form-control form-sm" data-rep-rs value="${toLocal(p.real_start)}"></label>
+        <label>Término real <input type="datetime-local" class="form-control form-sm" data-rep-re value="${toLocal(p.real_end)}"></label>
+        <button class="btn-sm btn-info" data-rep-phase-save="${p.id}">Salvar</button>
+        ${pausas}
+      </div>`;
+  }));
+  if (!acts.length) html += '<div class="rep-edit-row"><small class="rep-edit-note">Sem etapas apontadas neste dia.</small></div>';
+  return html + '</div>';
+}
+
+/** Linha de editor para as tabelas (folha de ponto e simplificado). */
+function dayEditorRow(day, data, cols) {
+  const ed = dayEditorHtml(day, data);
+  return ed ? `<tr class="rep-edit-tr no-print"><td colspan="${cols}">${ed}</td></tr>` : '';
+}
+
+function toggleReportEdit() {
+  if (!STATE.reportData) return toast('Gere o relatório primeiro.');
+  if (!canCorrectReport()) return toast('Só o administrador ou o próprio professor corrige os horários.');
+  STATE.reportEdit = !STATE.reportEdit;
+  gerarRelatorio(true).then(() => toast(STATE.reportEdit
+    ? 'Modo de correção ligado: ajuste os horários dia a dia e clique em Salvar — o relatório se atualiza na hora.'
+    : 'Modo de correção desligado.'));
+}
+
+function updateReportEditButton() {
+  const btn = $('#btn-rel-edit');
+  if (!btn) return;
+  const ok = !!STATE.reportData && canCorrectReport();
+  btn.disabled = !ok;
+  if (!ok) STATE.reportEdit = false;
+  btn.textContent = STATE.reportEdit ? '✔ Concluir correção' : '✏️ Corrigir horários';
+  btn.classList.toggle('active', STATE.reportEdit);
+}
+
+function bindReportEditors() {
+  const profId = reportProfessorId();
+  const dtOf = v => v ? v.replace('T', ' ').slice(0, 16) : '';
+  $$('#report-area [data-rep-ponto-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const row = btn.closest('.rep-edit-row');
+    const body = { date: btn.dataset.repPontoSave, in: row.querySelector('[data-rep-in]').value, out: row.querySelector('[data-rep-out]').value };
+    if (!body.in) return toast('Informe a entrada do ponto.');
+    if (profId !== STATE.userId) body.user_id = profId;
+    try {
+      const r = await api('ponto-set', { body });
+      toast(r.paused ? `Ponto salvo — ${r.paused} etapa(s) em andamento pausada(s) na saída.` : 'Ponto salvo — relatório atualizado.');
+      if (profId === STATE.userId) await refreshPonto();
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+  $$('#report-area [data-rep-phase-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const row = btn.closest('.rep-edit-row');
+    const body = { id: btn.dataset.repPhaseSave, op: 'set_times',
+      real_start: dtOf(row.querySelector('[data-rep-rs]').value), real_end: dtOf(row.querySelector('[data-rep-re]').value) };
+    try {
+      await api('phase', { body });
+      toast('Horários da etapa salvos — relatório atualizado.');
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+  $$('#report-area [data-rep-pause-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Excluir esta pausa? O tempo dela voltará a contar como trabalho.')) return;
+    try {
+      await api('pause-delete', { body: { id: btn.dataset.repPauseDel } });
+      toast('Pausa excluída — horas recalculadas.');
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+}
+
 async function gerarRelatorio(silent = false) {
   const profId = reportProfessorId();
   const from = $('#r-from').value, to = $('#r-to').value;
@@ -1737,14 +1850,19 @@ async function gerarRelatorio(silent = false) {
       $('#report-area').innerHTML = '<div class="empty">Nenhum apontamento no período selecionado.</div>';
       $('#btn-rel-print').disabled = true;
       $('#btn-rel-pdf').disabled = true;
+      STATE.reportData = null;
+      updateReportEditButton();
       return;
     }
     STATE.reportData = data;
     STATE.reportType = tipo;
+    if (!canCorrectReport()) STATE.reportEdit = false;
     $('#report-area').innerHTML = tipo === 'ponto' ? buildPontoHtml(data)
       : (tipo === 'simplificado' ? buildSimplifiedHtml(data) : buildDetailedHtml(data));
     $('#btn-rel-print').disabled = false;
     $('#btn-rel-pdf').disabled = false;
+    updateReportEditButton();
+    if (STATE.reportEdit) bindReportEditors();
     if (!silent) toast('Relatório gerado — confira a prévia abaixo.');
   } catch (e) { if (!silent) toast(e.message); }
 }
@@ -1946,6 +2064,8 @@ async function initPanel() {
   $('#btn-gerar').addEventListener('click', () => gerarRelatorio());
   $('#btn-rel-print').addEventListener('click', printReport);
   $('#btn-rel-pdf').addEventListener('click', exportReportPDF);
+  $('#btn-rel-edit')?.addEventListener('click', toggleReportEdit);
+  $('#r-prof')?.addEventListener('change', () => { STATE.reportEdit = false; updateReportEditButton(); });
 
   // Contas (admin)
   if (STATE.role === 'admin') {

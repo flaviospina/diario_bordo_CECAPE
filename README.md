@@ -49,6 +49,7 @@ Senha inicial de todas as contas semeadas: **cecape2026** — cada pessoa troca 
 - Seletor de **Mês** que preenche o período com o mês inteiro (vale para os três tipos), além das datas livres.
 - Todos saem com **campos de assinatura**: a **direção responsável pelo professor** (nome e lotação cadastrados na conta — professores de áreas diferentes assinam com direções diferentes; sem cadastro próprio vale a direção padrão, Maiberte Brogliato · CECAPE) e o professor (nome + RM), na prévia em tela, na impressão e no PDF.
 - A prévia exibida se **atualiza automaticamente** a cada alteração (atestado anexado, ponto corrigido, etapa editada), de modo que impressão e PDF nunca saiam com dados antigos; havendo mais de um registro de saúde no mesmo dia, prevalece o que tem atestado anexado.
+- **Corrigir horários no relatório**: botão "✏️ Corrigir horários" que insere, sob cada dia dos três relatórios, um editor com entrada/saída do ponto e início/término reais de cada etapa (mais exclusão de pausas); cada Salvar grava e regera o relatório. O administrador corrige qualquer professor; o professor, só o próprio; a gestão não edita. As regras de ponto e descanso continuam valendo (aplicadas ao dono do registro).
 - Impressão em layout claro de documento; PDF gerado no navegador (jsPDF), com fallback para a impressão.
 
 ## Banco de dados: MySQL ou SQLite
@@ -84,7 +85,7 @@ Tabelas: `users` (perfil, RM, etapas em JSON, direção responsável, hash de se
 
 ## Segurança
 
-- Login único obrigatório (nenhum dado é público); autorização por perfil em toda a API; cada professor só escreve nos próprios registros.
+- Login único obrigatório (nenhum dado é público); autorização por perfil em toda a API; cada professor só escreve nos próprios registros — o administrador pode **corrigir** horários de etapas, pausas e ponto de qualquer professor (nunca os botões de "agora": iniciar/pausar/retomar/concluir são do próprio).
 - Login/logout por formulário nativo com redirect do servidor (funciona sem JavaScript) + CSRF em toda escrita (cabeçalho `X-CSRF-Token` ou campo `_csrf`).
 - Bloqueio de força bruta (5 falhas/15 min por IP); senhas bcrypt com re-hash automático; sessão `HttpOnly`/`SameSite`/`Secure`, regenerada no login, expirada por inatividade.
 - PDO com prepared statements; validação e limites em todas as entradas; erros só no log; cabeçalhos CSP, X-Frame-Options etc.; `app/` e `data/` inacessíveis via web (`.htaccess` + guarda `APP_RUNNING` + nome de banco aleatório).

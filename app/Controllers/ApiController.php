@@ -216,19 +216,24 @@ final class ApiController extends Controller
         $id = (int)($data['id'] ?? 0);
         $op = (string)($data['op'] ?? '');
         $phase = $id > 0 ? Phase::find($id) : null;
-        if ($phase) {
-            $this->ownActivityOr404((int)$phase['activity_id']);
-        }
+        $activity = $phase ? $this->ownActivityOr404((int)$phase['activity_id']) : null;
         if (!$phase) {
             $this->json(['error' => 'Fase não encontrada.'], 404);
+        }
+        // Dono dos registros: as checagens de ponto/descanso são dele. O
+        // administrador só corrige horários (set_times/undo) — os botões de
+        // "agora" (iniciar, pausar, retomar, concluir) são do próprio professor.
+        $owner = (int)$activity['user_id'];
+        if ($owner !== (int)Session::userId() && !in_array($op, ['set_times', 'undo'], true)) {
+            $this->json(['error' => 'Iniciar, pausar, retomar e concluir são ações do próprio professor — como administrador, use "Editar" para corrigir os horários.'], 403);
         }
 
         $now = date('Y-m-d H:i');
         // Fora do ponto (jornada não iniciada ou já encerrada) e durante o
         // descanso não é possível registrar nada
         if (in_array($op, ['start', 'finish', 'pause', 'resume'], true)) {
-            $this->rejectIfNoPonto($now);
-            $this->rejectIfInBreak($now, 'Você está em horário de descanso');
+            $this->rejectIfNoPonto($now, $owner);
+            $this->rejectIfInBreak($now, 'Você está em horário de descanso', $owner);
         }
         switch ($op) {
             case 'start':
@@ -275,8 +280,8 @@ final class ApiController extends Controller
                             $this->json(['error' => 'Horário inválido: use o formato AAAA-MM-DD HH:MM.'], 422);
                         }
                         if ($v !== '') {
-                            $this->rejectIfNoPonto($v);
-                            $this->rejectIfInBreak($v, 'O horário informado cai no descanso');
+                            $this->rejectIfNoPonto($v, $owner);
+                            $this->rejectIfInBreak($v, 'O horário informado cai no descanso', $owner);
                         }
                         $set[$f] = $v === '' ? null : $v;
                     }
@@ -948,29 +953,31 @@ final class ApiController extends Controller
      * Recusa registros de trabalho fora do ponto: sem jornada iniciada no
      * dia, antes da entrada ou depois da saída registrada.
      */
-    private function rejectIfNoPonto(string $datetime): void
+    private function rejectIfNoPonto(string $datetime, ?int $uid = null): void
     {
+        $uid ??= (int)Session::userId();
         $date = substr($datetime, 0, 10);
         $time = substr($datetime, 11, 5);
-        $rec = Ponto::forDay((int)Session::userId(), $date);
+        $rec = Ponto::forDay($uid, $date);
         if (!$rec) {
             $this->json(['error' => $date === date('Y-m-d')
                 ? 'Inicie a jornada de trabalho (botão "Iniciar jornada", no topo) antes de registrar as etapas.'
-                : "Não há registro de ponto em $date — registre a entrada e a saída na aba Jornada antes de apontar este horário."], 422);
+                : "Não há registro de ponto em $date — registre a entrada e a saída (aba Jornada ou correção do relatório) antes de apontar este horário."], 422);
         }
         if ($time < $rec['clock_in']) {
-            $this->json(['error' => "O horário fica antes do início da jornada registrada ({$rec['clock_in']})."], 422);
+            $this->json(['error' => "O horário fica antes do início da jornada registrada ({$rec['clock_in']}). Corrija primeiro a entrada do ponto desse dia."], 422);
         }
         if (!empty($rec['clock_out']) && $time > $rec['clock_out']) {
-            $this->json(['error' => "A jornada deste dia já foi encerrada às {$rec['clock_out']} — o horário fica fora do ponto. Corrija o ponto na aba Jornada, se precisar."], 422);
+            $this->json(['error' => "A jornada desse dia foi encerrada às {$rec['clock_out']} — o horário fica fora do ponto. Corrija primeiro a saída do ponto desse dia."], 422);
         }
     }
 
     /** Recusa a operação se o horário cair dentro de um descanso do usuário. */
-    private function rejectIfInBreak(string $datetime, string $prefix): void
+    private function rejectIfInBreak(string $datetime, string $prefix, ?int $uid = null): void
     {
+        $uid ??= (int)Session::userId();
         $date = substr($datetime, 0, 10);
-        foreach (Pausa::forUser((int)Session::userId(), $date, $date) as $b) {
+        foreach (Pausa::forUser($uid, $date, $date) as $b) {
             $s = "$date {$b['start_time']}";
             $e = "$date {$b['end_time']}";
             if ($datetime >= $s && $datetime < $e) {
@@ -978,18 +985,19 @@ final class ApiController extends Controller
                 $this->json(['error' => "$prefix ($label {$b['start_time']}–{$b['end_time']}). Nenhum registro é permitido neste intervalo."], 422);
             }
         }
-        $this->rejectIfInHealthLeave($datetime, $prefix);
+        $this->rejectIfInHealthLeave($datetime, $prefix, $uid);
     }
 
     /**
      * Recusa registros durante um afastamento médico (dia inteiro) ou dentro
      * de uma saída médica (sem retorno informado, vale até o fim do dia).
      */
-    private function rejectIfInHealthLeave(string $datetime, string $prefix): void
+    private function rejectIfInHealthLeave(string $datetime, string $prefix, ?int $uid = null): void
     {
+        $uid ??= (int)Session::userId();
         $prefix = str_replace('em horário de descanso', 'em saída médica', str_replace('cai no descanso', 'cai na saída médica', $prefix));
         $date = substr($datetime, 0, 10);
-        foreach (Saude::forUser((int)Session::userId(), $date, $date) as $l) {
+        foreach (Saude::forUser($uid, $date, $date) as $l) {
             if ($l['type'] === 'afastamento') {
                 $this->json(['error' => "$prefix — há afastamento médico registrado neste dia. Nenhum registro de trabalho é permitido."], 422);
             }
@@ -1002,10 +1010,11 @@ final class ApiController extends Controller
         }
     }
 
+    /** Atividade do próprio usuário — ou de qualquer professor, para o administrador corrigir. */
     private function ownActivityOr404(int $id): array
     {
         $activity = $id > 0 ? Activity::find($id) : null;
-        if (!$activity || (int)$activity['user_id'] !== (int)Session::userId()) {
+        if (!$activity || ((int)$activity['user_id'] !== (int)Session::userId() && !Session::isAdmin())) {
             $this->json(['error' => 'Atividade não encontrada.'], 404);
         }
         return $activity;

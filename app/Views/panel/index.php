@@ -319,6 +319,7 @@ $admin = $role === 'admin';
             <button class="btn-action" id="btn-gerar">Gerar relatório</button>
             <button class="btn-outline" id="btn-rel-print" disabled>🖨 Imprimir</button>
             <button class="btn-outline" id="btn-rel-pdf" disabled>⬇ PDF</button>
+            <?php if ($capable): ?><button class="btn-outline" id="btn-rel-edit" disabled title="Corrigir, dia a dia, a entrada/saída do ponto e os horários reais das etapas deste relatório">✏️ Corrigir horários</button><?php endif; ?>
           </div>
         </div>
         <div id="report-area"></div>

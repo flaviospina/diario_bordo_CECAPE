@@ -218,6 +218,20 @@ $T = 'assets/tutorial';
           <li><b>Folha de ponto</b> — o modelo para o <b>fechamento do RH</b>: entrada e saída registradas pelos botões de jornada, os intervalos do dia e as horas do ponto (entrada → saída, descontados descansos e saídas médicas). Saídas automáticas aparecem com ¹.</li>
         </ul>
         <p>A prévia gerada <b>se atualiza sozinha</b> quando você altera algo (anexa um atestado, corrige o ponto, edita uma etapa) — o que for impresso ou exportado em PDF sempre reflete os dados mais recentes.</p>
+        <?php if ($capable): ?>
+        <h3>Corrigir horários direto no relatório</h3>
+        <p>Depois de gerar, clique em <b>✏️ Corrigir horários</b>. Abaixo de cada dia aparece um editor com:</p>
+        <ul>
+          <li><b>Ponto do dia</b> — entrada e saída (botão <b>Salvar ponto</b>; em dia sem ponto, <b>Registrar ponto</b> com os horários sugeridos pelos apontamentos);</li>
+          <li><b>cada etapa do dia</b> — início e término reais (com data, para etapas que viraram a noite) e as <b>pausas</b>, com ✕ para excluir uma registrada por engano.</li>
+        </ul>
+        <p>Cada <b>Salvar</b> grava na hora e o relatório é regerado com as novas horas. O editor vale para os três tipos de relatório, não sai na impressão nem no PDF, e é desligado em <b>✔ Concluir correção</b>. <?= $admin ? 'Como administrador, você corrige o relatório de <b>qualquer professor</b>; o professor corrige só o próprio.' : 'Você corrige só o seu próprio relatório.' ?></p>
+        <figure class="tut-img">
+          <img src="<?= $T ?>/tela-rel-corrigir.jpg" alt="Correção de horários no relatório">
+          <figcaption>Modo de correção ligado na folha de ponto: sob o dia, o editor do ponto e das etapas; cada Salvar regera o relatório.</figcaption>
+        </figure>
+        <div class="tut-tip">⚠️ As regras continuam valendo: um horário de etapa <b>fora do ponto</b> do dia (antes da entrada ou depois da saída) ou dentro de um descanso é recusado com aviso. Na prática, acerte primeiro a <b>saída do ponto</b> e depois os términos das etapas.</div>
+        <?php endif; ?>
         <p>Todos saem com os <b>campos de assinatura</b> — <?= e(DIRECTOR_NAME) ?> (<?= e(DIRECTOR_ROLE) ?>) e o professor (nome + RM) — na tela, na impressão e no PDF.</p>
         <figure class="tut-img">
           <img src="<?= $T ?>/tela-rel-ponto.jpg" alt="Folha de ponto">
