@@ -816,6 +816,10 @@ a.link:hover { text-decoration: underline; }
 .rep-edit .pause-item { background: #fff; border: 1px solid #c7d6ea; color: #1e3a8a; }
 .rep-edit .pause-del { color: #b91c1c; }
 .rep-edit-note { color: #6b7a90; font-style: italic; }
+.rep-edit-add { background: #f6f9fd; margin: 2px -12px -8px; padding: 6px 12px 8px; border-radius: 0 0 8px 8px; }
+.rep-edit-add + .rep-edit-add { margin-top: 0; }
+.rep-edit input[type="file"].form-control { padding: 2px 6px; max-width: 230px; }
+.rep-edit .paper-link { font-size: 12px; }
 #btn-rel-edit.active { border-color: var(--orange); color: var(--orange); }
 
 .ponto-chip {

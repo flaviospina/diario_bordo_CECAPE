@@ -1743,16 +1743,20 @@ function canCorrectReport() {
 }
 
 /**
- * Editor de um dia do relatório: entrada/saída do ponto e, para cada etapa
- * do dia, início/término reais e as pausas (com exclusão). Fora da impressão.
+ * Editor de um dia do relatório: ponto (entrada/saída), etapas (início/término
+ * reais e pausas), descansos (almoço/janta) e saúde (saída médica com atestado).
+ * Em dia de afastamento só a seção de saúde aparece. Fora da impressão.
  */
 function dayEditorHtml(day, data) {
-  if (!STATE.reportEdit || afastOfDay(data.health, day)) return '';
+  if (!STATE.reportEdit) return '';
+  const afast = afastOfDay(data.health, day);
   const acts = data.activities.filter(a => a.date === day);
   const rec = (data.ponto || []).find(r => r.date === day) || pontoEstimate(acts, day);
   const toLocal = dt => dt ? dt.replace(' ', 'T').slice(0, 16) : '';
-  let html = `
-    <div class="rep-edit no-print" data-day="${day}">
+  let html = `<div class="rep-edit no-print" data-day="${day}">`;
+
+  if (!afast) {
+    html += `
       <div class="rep-edit-row">
         <span class="rep-edit-lbl">⏱ Ponto do dia</span>
         <label>Entrada <input type="time" class="form-control form-sm" data-rep-in value="${esc(rec?.clock_in || '')}"></label>
@@ -1760,10 +1764,10 @@ function dayEditorHtml(day, data) {
         <button class="btn-sm btn-info" data-rep-ponto-save="${day}">${rec && !rec.estimado ? 'Salvar ponto' : 'Registrar ponto'}</button>
         ${rec && !rec.estimado ? '' : '<small class="rep-edit-note">sem ponto registrado — horários sugeridos pelos apontamentos</small>'}
       </div>`;
-  acts.forEach(a => a.phases.forEach(p => {
-    const pausas = (p.pauses || []).map(z =>
-      `<span class="pause-item">⏸ ${fmtTimeRel(z.start_dt, day)}→${z.end_dt ? fmtTimeRel(z.end_dt, day) : 'em pausa'}<button class="pause-del" data-rep-pause-del="${z.id}" title="Excluir esta pausa">✕</button></span>`).join(' ');
-    html += `
+    acts.forEach(a => a.phases.forEach(p => {
+      const pausas = (p.pauses || []).map(z =>
+        `<span class="pause-item">⏸ ${fmtTimeRel(z.start_dt, day)}→${z.end_dt ? fmtTimeRel(z.end_dt, day) : 'em pausa'}<button class="pause-del" data-rep-pause-del="${z.id}" title="Excluir esta pausa">✕</button></span>`).join(' ');
+      html += `
       <div class="rep-edit-row">
         <span class="rep-edit-lbl">${esc(a.title)} › <b>${esc(p.name)}</b></span>
         <label>Início real <input type="datetime-local" class="form-control form-sm" data-rep-rs value="${toLocal(p.real_start)}"></label>
@@ -1771,8 +1775,59 @@ function dayEditorHtml(day, data) {
         <button class="btn-sm btn-info" data-rep-phase-save="${p.id}">Salvar</button>
         ${pausas}
       </div>`;
-  }));
-  if (!acts.length) html += '<div class="rep-edit-row"><small class="rep-edit-note">Sem etapas apontadas neste dia.</small></div>';
+    }));
+    if (!acts.length) html += '<div class="rep-edit-row"><small class="rep-edit-note">Sem etapas apontadas neste dia.</small></div>';
+
+    // Descansos do dia: corrigir, excluir ou adicionar almoço/janta
+    const dayBreaks = (data.breaks || []).filter(b => b.date === day);
+    dayBreaks.forEach(b => {
+      html += `
+      <div class="rep-edit-row">
+        <span class="rep-edit-lbl">${BREAK_ICON[b.type] || '☕'} <b>${esc(BREAK_LABEL[b.type] || b.type)}</b></span>
+        <label>Início <input type="time" class="form-control form-sm" data-rep-bs value="${esc(b.start_time)}"></label>
+        <label>Término <input type="time" class="form-control form-sm" data-rep-be value="${esc(b.end_time)}"></label>
+        <button class="btn-sm btn-info" data-rep-break-save="${b.id}">Salvar</button>
+        <button class="btn-sm btn-danger" data-rep-break-del="${b.id}" title="Excluir este descanso">✕</button>
+      </div>`;
+    });
+    html += `
+      <div class="rep-edit-row rep-edit-add">
+        <span class="rep-edit-lbl">☕ Adicionar descanso</span>
+        <select class="form-control form-sm" data-rep-bt><option value="almoco">Almoço</option><option value="janta">Janta</option></select>
+        <label>Início <input type="time" class="form-control form-sm" data-rep-bs></label>
+        <label>Término <input type="time" class="form-control form-sm" data-rep-be></label>
+        <button class="btn-sm btn-ok" data-rep-break-add="${day}">Adicionar</button>
+      </div>`;
+  }
+
+  // Saúde do dia: anexar/trocar o atestado, excluir, registrar saída médica
+  const dayHealth = (data.health || []).filter(l =>
+    l.type === 'saida' ? l.date === day : (day >= l.date && day <= (l.end_date || l.date)));
+  dayHealth.forEach(l => {
+    const periodo = l.type === 'saida'
+      ? `${esc(l.start_time)} → ${l.end_time ? esc(l.end_time) : 'sem retorno'}`
+      : `${l.date.split('-').reverse().slice(0, 2).join('/')} a ${(l.end_date || l.date).split('-').reverse().slice(0, 2).join('/')}`;
+    html += `
+      <div class="rep-edit-row">
+        <span class="rep-edit-lbl">🏥 <b>${esc(HEALTH_LABEL[l.type] || l.type)}</b> ${periodo}${l.note ? ` · ${esc(l.note)}` : ''}</span>
+        ${l.certificate_file
+          ? `<a class="paper-link" href="index.php?r=api/atestado&id=${l.id}">📎 atestado entregue</a>
+             <button class="btn-sm btn-muted" data-rep-atestado="${l.id}" title="Substituir o atestado">↻ trocar</button>`
+          : `<span class="rep-edit-note">sem atestado</span>
+             <button class="btn-sm btn-info" data-rep-atestado="${l.id}">📎 Anexar atestado</button>`}
+        <button class="btn-sm btn-danger" data-rep-health-del="${l.id}" title="Excluir este registro de saúde">✕</button>
+      </div>`;
+  });
+  if (!afast) {
+    html += `
+      <div class="rep-edit-row rep-edit-add">
+        <span class="rep-edit-lbl">🏥 Registrar saída médica</span>
+        <label>Saída <input type="time" class="form-control form-sm" data-rep-hs></label>
+        <label>Retorno <input type="time" class="form-control form-sm" data-rep-he title="Vazio = não retornou"></label>
+        <label>Atestado <input type="file" class="form-control form-sm" data-rep-hf accept=".pdf,.jpg,.jpeg,.png"></label>
+        <button class="btn-sm btn-ok" data-rep-health-add="${day}">Registrar</button>
+      </div>`;
+  }
   return html + '</div>';
 }
 
@@ -1831,6 +1886,73 @@ function bindReportEditors() {
     try {
       await api('pause-delete', { body: { id: btn.dataset.repPauseDel } });
       toast('Pausa excluída — horas recalculadas.');
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+
+  // Descansos (almoço/janta)
+  const withUser = body => { if (profId !== STATE.userId) body.user_id = profId; return body; };
+  $$('#report-area [data-rep-break-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const row = btn.closest('.rep-edit-row');
+    const body = { id: btn.dataset.repBreakSave, start: row.querySelector('[data-rep-bs]').value, end: row.querySelector('[data-rep-be]').value };
+    if (!body.start || !body.end) return toast('Informe início e término do descanso.');
+    try {
+      await api('break-update', { body });
+      toast('Descanso corrigido — horas recalculadas.');
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+  $$('#report-area [data-rep-break-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Excluir este descanso? O período voltará a contar como trabalho.')) return;
+    try {
+      await api('break-delete', { body: { id: btn.dataset.repBreakDel } });
+      toast('Descanso excluído — horas recalculadas.');
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+  $$('#report-area [data-rep-break-add]').forEach(btn => btn.addEventListener('click', async () => {
+    const row = btn.closest('.rep-edit-row');
+    const body = withUser({ date: btn.dataset.repBreakAdd, type: row.querySelector('[data-rep-bt]').value,
+      start: row.querySelector('[data-rep-bs]').value, end: row.querySelector('[data-rep-be]').value });
+    if (!body.start || !body.end) return toast('Informe início e término do descanso.');
+    try {
+      await api('break-create', { body });
+      toast('Descanso registrado — horas recalculadas.');
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+
+  // Saúde: atestado, exclusão e nova saída médica
+  $$('#report-area [data-rep-atestado]').forEach(btn => btn.addEventListener('click', () => uploadAtestado(btn.dataset.repAtestado)));
+  $$('#report-area [data-rep-health-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Excluir este registro de saúde (e o atestado anexado, se houver)?')) return;
+    try {
+      await api('health-delete', { body: { id: btn.dataset.repHealthDel } });
+      toast('Registro de saúde excluído.');
+      await load();
+    } catch (e) { toast(e.message); }
+  }));
+  $$('#report-area [data-rep-health-add]').forEach(btn => btn.addEventListener('click', async () => {
+    const row = btn.closest('.rep-edit-row');
+    const saida = row.querySelector('[data-rep-hs]').value;
+    if (!saida) return toast('Informe o horário de saída.');
+    const fd = new FormData();
+    fd.append('type', 'saida');
+    fd.append('date', btn.dataset.repHealthAdd);
+    fd.append('start_time', saida);
+    fd.append('end_time', row.querySelector('[data-rep-he]').value);
+    fd.append('note', '');
+    if (profId !== STATE.userId) fd.append('user_id', String(profId));
+    const file = row.querySelector('[data-rep-hf]').files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) return toast('O atestado deve ter no máximo 5 MB.');
+      fd.append('atestado', file);
+    }
+    try {
+      const res = await fetch('index.php?r=api/health-create', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Erro ao registrar.');
+      toast(file ? 'Saída médica registrada com o atestado.' : 'Saída médica registrada — anexe o atestado quando o tiver.');
       await load();
     } catch (e) { toast(e.message); }
   }));

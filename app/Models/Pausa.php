@@ -45,6 +45,12 @@ final class Pausa
         return (int)Database::pdo()->lastInsertId();
     }
 
+    public static function update(int $id, string $type, string $start, string $end): void
+    {
+        Database::pdo()->prepare('UPDATE breaks SET type = :t, start_time = :s, end_time = :e WHERE id = :id')
+            ->execute([':t' => $type, ':s' => $start, ':e' => $end, ':id' => $id]);
+    }
+
     public static function delete(int $id): void
     {
         Database::pdo()->prepare('DELETE FROM breaks WHERE id = :id')->execute([':id' => $id]);

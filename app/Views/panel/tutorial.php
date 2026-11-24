@@ -223,7 +223,9 @@ $T = 'assets/tutorial';
         <p>Depois de gerar, clique em <b>✏️ Corrigir horários</b>. Abaixo de cada dia aparece um editor com:</p>
         <ul>
           <li><b>Ponto do dia</b> — entrada e saída (botão <b>Salvar ponto</b>; em dia sem ponto, <b>Registrar ponto</b> com os horários sugeridos pelos apontamentos);</li>
-          <li><b>cada etapa do dia</b> — início e término reais (com data, para etapas que viraram a noite) e as <b>pausas</b>, com ✕ para excluir uma registrada por engano.</li>
+          <li><b>cada etapa do dia</b> — início e término reais (com data, para etapas que viraram a noite) e as <b>pausas</b>, com ✕ para excluir uma registrada por engano;</li>
+          <li><b>descansos</b> — corrija o horário do almoço/janta registrado (<b>Salvar</b>), exclua-o (✕) ou <b>adicione</b> um descanso que faltou (tipo, início e término);</li>
+          <li><b>saúde</b> — em cada saída médica ou afastamento do dia, <b>📎 Anexar atestado</b> (ou ↻ trocar) e ✕ para excluir; e <b>Registrar saída médica</b> que não foi apontada (saída, retorno opcional e o atestado já junto, se tiver).</li>
         </ul>
         <p>Cada <b>Salvar</b> grava na hora e o relatório é regerado com as novas horas. O editor vale para os três tipos de relatório, não sai na impressão nem no PDF, e é desligado em <b>✔ Concluir correção</b>. <?= $admin ? 'Como administrador, você corrige o relatório de <b>qualquer professor</b>; o professor corrige só o próprio.' : 'Você corrige só o seu próprio relatório.' ?></p>
         <figure class="tut-img">

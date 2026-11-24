@@ -332,8 +332,9 @@ final class ApiController extends Controller
     }
 
     /**
-     * Professor cujo ponto será consultado/corrigido: o próprio usuário ou,
-     * para o administrador, qualquer conta que registra apontamentos.
+     * Professor cujos registros serão consultados/corrigidos: o próprio
+     * usuário ou, para o administrador, qualquer conta que registra
+     * apontamentos (ponto, descansos e saúde).
      */
     private function pontoTargetUser(int $requested): int
     {
@@ -342,13 +343,19 @@ final class ApiController extends Controller
             return $me;
         }
         if (!Session::isAdmin()) {
-            $this->json(['error' => 'Somente o administrador corrige o ponto de outros professores.'], 403);
+            $this->json(['error' => 'Somente o administrador corrige registros de outros professores.'], 403);
         }
         $target = User::find($requested);
         if (!$target || $target['role'] === 'gestor') {
             $this->json(['error' => 'Professor não encontrado.'], 404);
         }
         return (int)$target['id'];
+    }
+
+    /** Registro de outro usuário só pode ser alterado pelo dono ou pelo administrador. */
+    private function ownsOrAdmin(?array $row): bool
+    {
+        return $row && ((int)$row['user_id'] === (int)Session::userId() || Session::isAdmin());
     }
 
     /** "Iniciar jornada": abre o ponto de hoje com a hora atual. */
@@ -519,6 +526,7 @@ final class ApiController extends Controller
         $this->requireProfessorCapable();
         $this->requireCsrf();
         $data = $this->body();
+        $uid = $this->pontoTargetUser((int)($data['user_id'] ?? 0));
         $date = (string)($data['date'] ?? '');
         $type = (string)($data['type'] ?? '');
         $start = (string)($data['start'] ?? '');
@@ -527,15 +535,42 @@ final class ApiController extends Controller
             || !$this->isValidTime($start) || !$this->isValidTime($end) || $end <= $start) {
             $this->json(['error' => 'Informe data, tipo e um intervalo válido (término após o início).'], 422);
         }
-        // Descansos do mesmo dia não podem se sobrepor
-        foreach (Pausa::forUser((int)Session::userId(), $date, $date) as $b) {
-            if ($start < $b['end_time'] && $end > $b['start_time']) {
+        $this->assertBreakFree($uid, $date, $start, $end, 0);
+        $id = Pausa::create($uid, $date, $type, $start, $end);
+        $this->json(['ok' => true, 'id' => $id]);
+    }
+
+    /** Corrige o horário de um descanso já registrado (ex.: almoço errado no relatório). */
+    public function breakUpdate(): void
+    {
+        $this->requireProfessorCapable();
+        $this->requireCsrf();
+        $data = $this->body();
+        $id = (int)($data['id'] ?? 0);
+        $pausa = $id > 0 ? Pausa::find($id) : null;
+        if (!$this->ownsOrAdmin($pausa)) {
+            $this->json(['error' => 'Descanso não encontrado.'], 404);
+        }
+        $start = (string)($data['start'] ?? '');
+        $end = (string)($data['end'] ?? '');
+        $type = (string)($data['type'] ?? $pausa['type']);
+        if (!isset(BREAK_TYPES[$type]) || !$this->isValidTime($start) || !$this->isValidTime($end) || $end <= $start) {
+            $this->json(['error' => 'Informe um intervalo válido (término após o início).'], 422);
+        }
+        $this->assertBreakFree((int)$pausa['user_id'], (string)$pausa['date'], $start, $end, $id);
+        Pausa::update($id, $type, $start, $end);
+        $this->json(['ok' => true]);
+    }
+
+    /** Descansos do mesmo dia não podem se sobrepor (ignora o próprio registro ao editar). */
+    private function assertBreakFree(int $uid, string $date, string $start, string $end, int $ignoreId): void
+    {
+        foreach (Pausa::forUser($uid, $date, $date) as $b) {
+            if ((int)$b['id'] !== $ignoreId && $start < $b['end_time'] && $end > $b['start_time']) {
                 $label = BREAK_TYPES[$b['type']] ?? 'Descanso';
                 $this->json(['error' => "Conflito com um descanso já registrado ($label {$b['start_time']}–{$b['end_time']})."], 422);
             }
         }
-        $id = Pausa::create((int)Session::userId(), $date, $type, $start, $end);
-        $this->json(['ok' => true, 'id' => $id]);
     }
 
     public function breakDelete(): void
@@ -544,7 +579,7 @@ final class ApiController extends Controller
         $this->requireCsrf();
         $id = (int)($this->body()['id'] ?? 0);
         $pausa = $id > 0 ? Pausa::find($id) : null;
-        if (!$pausa || (int)$pausa['user_id'] !== (int)Session::userId()) {
+        if (!$this->ownsOrAdmin($pausa)) {
             $this->json(['error' => 'Descanso não encontrado.'], 404);
         }
         Pausa::delete($id);
@@ -558,6 +593,7 @@ final class ApiController extends Controller
     {
         $this->requireProfessorCapable();
         $this->requireCsrf();
+        $uid = $this->pontoTargetUser((int)($_POST['user_id'] ?? 0));
         $type = (string)($_POST['type'] ?? '');
         $date = (string)($_POST['date'] ?? '');
         $note = mb_substr(trim((string)($_POST['note'] ?? '')), 0, 300);
@@ -594,7 +630,7 @@ final class ApiController extends Controller
         $record['certificate_file'] = $stored['file'];
         $record['certificate_name'] = $stored['name'];
 
-        $id = Saude::create((int)Session::userId(), $record);
+        $id = Saude::create($uid, $record);
         $this->json(['ok' => true, 'id' => $id]);
     }
 
@@ -608,7 +644,7 @@ final class ApiController extends Controller
         $this->requireCsrf();
         $id = (int)($_POST['id'] ?? 0);
         $leave = $id > 0 ? Saude::find($id) : null;
-        if (!$leave || (int)$leave['user_id'] !== (int)Session::userId()) {
+        if (!$this->ownsOrAdmin($leave)) {
             $this->json(['error' => 'Registro de saúde não encontrado.'], 404);
         }
         $file = $_FILES['atestado'] ?? null;
@@ -654,7 +690,7 @@ final class ApiController extends Controller
         $this->requireCsrf();
         $id = (int)($this->body()['id'] ?? 0);
         $leave = $id > 0 ? Saude::find($id) : null;
-        if (!$leave || (int)$leave['user_id'] !== (int)Session::userId()) {
+        if (!$this->ownsOrAdmin($leave)) {
             $this->json(['error' => 'Registro de saúde não encontrado.'], 404);
         }
         Saude::delete($leave);

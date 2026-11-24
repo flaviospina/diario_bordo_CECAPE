@@ -60,6 +60,7 @@ $router->add('POST', 'api/delete', ApiController::class, 'delete');
 $router->add('POST', 'api/phase', ApiController::class, 'phase');
 $router->add('POST', 'api/pause-delete', ApiController::class, 'pauseDelete');
 $router->add('POST', 'api/break-create', ApiController::class, 'breakCreate');
+$router->add('POST', 'api/break-update', ApiController::class, 'breakUpdate');
 $router->add('POST', 'api/break-delete', ApiController::class, 'breakDelete');
 
 // API — ponto (início/término da jornada, folha do RH)
